@@ -1,0 +1,85 @@
+# CLAUDE.md
+
+Guidance for AI coding agents (and humans) working on ffscan, an open-source scanning app for the Epson
+FastFoto FF-680W. Read README.md for what the app does, and docs/PROTOCOL.md before touching scanner code.
+
+## Ground rules
+
+- **This repository is public. Never commit anything personal:** scanner serial numbers or hostnames
+  (`EPSONxxxxxx.local`), real IP addresses (use `192.0.2.x` in docs), emails, cloud project IDs, names or text
+  from people's photos, or user home paths. Grep the staged diff before every commit.
+- **Never commit photos or scanner output.** `.gitignore` blocks `*.jpg` and `scans/`. Screenshots in
+  `docs/screenshots/` must use synthetic demo images, never real prints.
+- `NOTES.local.md`, if present, holds the maintainer's private history and state. It's gitignored: read it
+  for context, but never copy its contents into tracked files.
+
+## Commands
+
+```bash
+./run.sh                                        # set up .venv, build tools/orient, start the app on :8680
+.venv/bin/python tests/test_ffscan.py           # offline tests, no scanner needed; prints "ok"
+.venv/bin/python -m ffscan.ff680w status        # talk to a real scanner from the CLI
+docker build -t ffscan . && docker compose up   # container (macOS-only features disabled)
+```
+
+Restarting the app: `kill $(lsof -t -iTCP:8680 -sTCP:LISTEN)`, then `./run.sh`. The process name is `Python`
+with a capital P, so `pkill -f "python …"` misses it. A second instance then fails to bind and the old code
+keeps serving.
+
+There is no build step for the UI: `ffscan/static/*.html` are served as is. After editing the inline
+script, syntax-check it (extract the `<script>` block and run `node --check`).
+
+## Layout
+
+| Path | Role |
+|---|---|
+| `ffscan/ff680w.py` | Protocol client and CLI: IS packets, ESC/I-2 tokens, discovery, crop, JPEG height fix |
+| `ffscan/app.py` | FastAPI app: settings, scan job, per-photo pipeline, background AI and upload workers, API |
+| `ffscan/enhance.py` | Red-eye (Vision eye landmarks), faded-colour restoration, auto tone |
+| `ffscan/dupes.py` | Perceptual-hash duplicate index |
+| `ffscan/photo_ai.py` | Claude analysis (Anthropic API or Vertex AI), structured JSON output |
+| `ffscan/cloud.py` | rclone remotes via its `--non-interactive` config protocol; upload destinations |
+| `ffscan/static/` | `index.html` (whole UI, vanilla JS) and `help.html` |
+| `tools/orient.swift` | Apple Vision CLI: face-roll orientation and `--eyes`; compiled by `run.sh` |
+
+## Pipeline (per scanned side, in `app.process_page`)
+
+save raw copy → side filter → crop → blank-back check → duplicate check → enhanced copy → face rotation →
+metadata → emit `photo` event → AI analysis (background queue) **or** upload queue. The AI worker queues the
+uploads after it has written its metadata.
+
+Order matters:
+- Crop before writing metadata. It's harmless now that crop keeps EXIF and XMP, but keep the order.
+- Rotation is stored as the EXIF Orientation tag (lossless). Crop boxes and Vision coordinates are in
+  **stored** pixels: never `exif_transpose` before cropping or before sending images to Claude.
+
+## Scanner facts that cost time to learn
+
+- Photos load face up: **side B is the picture**, side A the back of the print. A is sent first.
+- Keep polling `IMG` while it returns empty. Stopping early aborts the page, and the scanner reports a jam.
+- The JPEG SOF carries the *requested* height; `fix_jpeg_height` patches it to the `#pen` height.
+- The scanner sends at most `reply_len` bytes per request; pull bodies with empty `0x2000` requests.
+- Hardware crop (`CRP `) is a no-op; crop is done in software (`find_photo_box`).
+- Sample the crop background 1.5–3% in from the edges: the outermost columns of 300 dpi scans differ.
+- Pure-white pixels (≥ 250) are deskew corner fill, not photo.
+- Find rows first, then count columns only within them: back-side scans have a full-width band past the paper.
+
+## Gotchas
+
+- **Live updates are polled** (`/api/events?since=N`, once a second), on purpose. One SSE stream per tab used up
+  Chrome's six connections per host, and every other request hung.
+- The grid must use `/api/thumb` (cached 480 px), never full scans: hundreds of 4 MB JPEGs froze the browser.
+- CSS: `[hidden] { display: none !important }` exists because `.folder`/`.progress` set `display:flex`.
+- Escape any server or cloud string before putting it in `innerHTML` (`esc()` in index.html).
+- Duplicate threshold 7 was measured: the same print differs by 0–6 bits, different prints by 9 or more.
+  Re-measure before changing it. Backs (`_back`, CLI `_<n>A`) and `_enhanced` copies are excluded, because
+  blank backs all look alike.
+- macOS-only pieces degrade gracefully in Docker or Linux: `dns-sd`, `security` (Keychain), `osascript`,
+  `tools/orient`, `~/.Trash`. Keep it that way: check with `shutil.which` or path existence.
+- Claude API code: default model `claude-opus-5-5`. Use structured output via `output_config.format`.
+  Server-side fallbacks on the Anthropic API; `BetaRefusalFallbackMiddleware` on Vertex.
+
+## Tests
+
+`tests/test_ffscan.py` is a plain assert script, not pytest. Protocol fixtures are real scanner replies with
+the serial replaced. Add one check for any new non-trivial logic: a parser, a threshold, an image heuristic.

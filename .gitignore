@@ -1,20 +1,40 @@
 # Python
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
 
 # Build output (run.sh compiles it from tools/orient.swift)
 tools/orient
 
-# Local data that must never be published
+# Your photos and scanner output: never published
 scans/
 *.jpg
 *.jpeg
-*.dmg
+*.tif
+*.tiff
+*.heic
+*.bmp
+
+# Local state, logs and secrets
 *.log
 app_log.txt
 settings.json
+uploads.json
+hashes.json
 NOTES.local.md
+.env
+.env.*
+rclone.conf
+*.dmg
 
-# macOS
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
 .DS_Store

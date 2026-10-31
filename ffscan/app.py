@@ -3,14 +3,19 @@
 Run:  ./run.sh   (or .venv/bin/python -m ffscan.app)   then open http://localhost:8680
 Needs: tools/orient (built by run.sh), exiftool and rclone (Homebrew).
 
-Environment (all optional):
+Environment (all optional; the Docker image sets several of them):
   FFSCAN_PORT       web port (default 8680)
+  FFSCAN_BIND       listen address (default 127.0.0.1; 0.0.0.0 inside Docker)
+  FFSCAN_PHOTOS_DIR default Save to folder (default ~/Pictures/Scans)
+  FFSCAN_SCANNER    scanner address, skipping discovery (default: discover)
+  FFSCAN_SUBNET     subnet to search when Bonjour isn't available, e.g. 192.168.1 (default: this machine's /24)
   FFSCAN_DATA_DIR   settings, upload record, duplicate index (default ~/Library/Application Support/FF680W)
   FFSCAN_CACHE_DIR  thumbnails and untouched raw scans (default ~/Library/Caches/FF680W)
 """
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -32,8 +37,8 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 ORIENT = ROOT.parent / "tools" / "orient"
 RAW_DIR, RAW_KEEP = CACHE_DIR / "raw", 300  # last N untouched scans
 DEFAULTS = {
-    "host": "",               # empty: find the scanner on the network automatically (Bonjour)
-    "folder": str(Path.home() / "Pictures" / "Scans"),
+    "host": os.environ.get("FFSCAN_SCANNER", ""),  # empty: find the scanner on the network automatically
+    "folder": os.environ.get("FFSCAN_PHOTOS_DIR", str(Path.home() / "Pictures" / "Scans")),
     "dpi": 300,
     "color": "C024",          # C024 colour, M008 greyscale
     "sides": "picture",       # picture | back | both
@@ -467,6 +472,8 @@ def pick_folder():
         out = run(["osascript", "-e", 'POSIX path of (choose folder with prompt "Save scanned photos to:")'])
     except subprocess.CalledProcessError:
         return {"folder": None}  # user cancelled
+    except FileNotFoundError:
+        raise HTTPException(501, "the folder picker needs macOS; type the folder path instead")
     return put_settings({"folder": out.strip()})
 
 
@@ -578,21 +585,26 @@ def save_ai_key(body: dict):
         raise HTTPException(400, "Anthropic rejected this key")
     except anthropic.APIConnectionError:
         raise HTTPException(502, "couldn't reach Anthropic to check the key; try again")
+    import shutil
+
+    os.environ["ANTHROPIC_API_KEY"] = key
+    photo_ai._clients.clear()
+    if not shutil.which("security"):  # no macOS Keychain (Docker/Linux): works until the app restarts
+        return {"present": True, "persisted": False}
     # `security -i` reads the command from stdin, so the key never appears in the process list
     cmd = f'add-generic-password -U -a "{os.environ.get("USER", "ff680w")}" -s {KEYCHAIN_SERVICE} -w "{key}"\n'
     r = subprocess.run(["security", "-i"], input=cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise HTTPException(500, "couldn't save the key in the Keychain")
-    os.environ["ANTHROPIC_API_KEY"] = key
-    photo_ai._clients.clear()
-    return {"present": True}
+    return {"present": True, "persisted": True}
 
 
 @app.delete("/api/ai/key")
 def delete_ai_key():
     from . import photo_ai
 
-    subprocess.run(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE], capture_output=True)
+    if shutil.which("security"):
+        subprocess.run(["security", "delete-generic-password", "-s", KEYCHAIN_SERVICE], capture_output=True)
     os.environ.pop("ANTHROPIC_API_KEY", None)
     photo_ai._clients.clear()
     return {"present": False}
@@ -623,7 +635,8 @@ def delete(body: dict):
     """Move to the macOS Trash (recoverable), not a permanent delete. Accepts {"file"} or {"files"}."""
     import shutil
 
-    trash = Path.home() / ".Trash"
+    trash = Path.home() / ".Trash" if (Path.home() / ".Trash").is_dir() else DATA_DIR / "Trash"
+    trash.mkdir(parents=True, exist_ok=True)
     files = body.get("files") or [body["file"]]
     for f in files:
         p = safe_path(f)
@@ -722,4 +735,4 @@ app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
 if __name__ == "__main__":
     threading.Thread(target=upload_worker, daemon=True).start()
     threading.Thread(target=ai_worker, daemon=True).start()
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("FFSCAN_PORT", 8680)))
+    uvicorn.run(app, host=os.environ.get("FFSCAN_BIND", "127.0.0.1"), port=int(os.environ.get("FFSCAN_PORT", 8680)))

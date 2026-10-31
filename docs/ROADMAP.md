@@ -25,6 +25,8 @@
 - **Duplicate detection:** dHash in four rotations. Tuned on repeated scans of an 18-print stack: the same
   print differs by 0–6 bits, different prints by 9 or more; the threshold is 7.
 - **Safe delete:** photos go to the macOS Trash.
+- **Docker image** (`Dockerfile`, `docker-compose.yml`) running everything that doesn't need macOS.
+- **Settings sidebar** in collapsible sections with live summaries, and an Activity log pinned to the window.
 
 ## Next
 
@@ -40,7 +42,8 @@
 
 ## Known limitations
 
-- macOS only.
+- Full feature set on macOS only; Docker runs the rest (see below).
 - The network-scan fallback assumes a /24 subnet. Larger networks rely on Bonjour or a manually entered address.
 - rclone's shared Google sign-in is being retired by rclone; Google accounts may need your own OAuth client ID.
-- Cropping uses `sips`, which re-encodes the JPEG once at quality 95.
+- Cropping re-encodes the JPEG once (quality 95); metadata is kept.
+- Docker: no Apple Vision (face rotate, red-eye), no Bonjour, no browser sign-in for OAuth cloud accounts.

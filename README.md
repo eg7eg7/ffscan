@@ -35,15 +35,33 @@ tagged and optionally uploaded to the cloud.
 
 ![Built-in help](docs/screenshots/help.png)
 
-## Requirements
+## Quick start (macOS)
 
-- macOS 13 or later (Apple Silicon or Intel) with Python 3.10+ and the Xcode Command Line Tools
-  (`xcode-select --install`, which provides `swiftc`)
-- [Homebrew](https://brew.sh) tools: `brew install exiftool rclone`
-- An Epson FastFoto FF-680W connected to the same Wi-Fi network as the Mac
-- Optional: an [Anthropic API key](https://console.anthropic.com) for AI analysis
+Everything below is a one-time setup. Copy and paste each block into **Terminal**.
 
-## Quick start
+**1. Apple's command line tools** (includes `git` and the Swift compiler). Skip this if `xcode-select -p`
+already prints a path.
+
+```bash
+xcode-select --install
+```
+
+**2. Homebrew**, the macOS package manager. Skip this if `brew --version` already works.
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+On Apple Silicon Macs, follow the two `echo … >> ~/.zprofile` / `eval …` lines Homebrew prints at the end so
+that `brew` is on your PATH, then open a new Terminal window.
+
+**3. Python and the two tools ffscan uses:** exiftool writes photo metadata, and rclone handles cloud uploads.
+
+```bash
+brew install python exiftool rclone
+```
+
+**4. Download and start ffscan**
 
 ```bash
 git clone https://github.com/eg7eg7/ffscan.git
@@ -51,14 +69,44 @@ cd ffscan
 ./run.sh
 ```
 
-The first run creates a Python virtual environment, installs the dependencies and builds the small Apple
-Vision helper. Then it opens **http://localhost:8680**. Stop the app with `Ctrl-C`.
+The first run takes about a minute. It creates a Python environment, installs the dependencies and builds
+the small Apple Vision helper. Then it opens **http://localhost:8680** in your browser. Stop the app with
+`Ctrl-C`; start it again any time with `./run.sh` from the `ffscan` folder.
 
-1. Load photos **face up** in the scanner's feeder.
-2. Choose where to save them under **Save to**, and optionally an **Album** name.
-3. Pick settings (hover the ⓘ next to any setting for an explanation) and press **Scan**.
+**5. Scan**
+
+1. Make sure the scanner is on and connected to the **same Wi-Fi** as your Mac (use Epson's setup once if it
+   has never been on Wi-Fi). ffscan finds it by itself; the status at the top turns to *Ready*.
+2. Load photos **face up** in the feeder.
+3. Choose where to save them under **Save to**, and optionally an album name under **Batch metadata**.
+4. Press **Scan**. Hover the ⓘ next to any setting for an explanation, or press **Help**.
 
 Tick **Keep scanning as I load more photos** to work through a whole box without touching the computer.
+
+## Run with Docker (any OS)
+
+If you'd rather not install anything except [Docker](https://www.docker.com/products/docker-desktop/):
+
+```bash
+git clone https://github.com/eg7eg7/ffscan.git
+cd ffscan
+# edit docker-compose.yml: set FFSCAN_SUBNET to your network, e.g. "192.168.1" (or FFSCAN_SCANNER to the scanner's IP)
+docker compose up -d
+```
+
+Open **http://localhost:8680**. Scans are saved in the `photos` folder next to `docker-compose.yml`.
+
+The container runs everything that doesn't depend on macOS: scanning, crop, enhancement (without red-eye),
+duplicates, metadata, AI analysis and uploads. Not available in Docker:
+
+- Face-based auto-rotate and red-eye removal, which need Apple Vision.
+- Automatic Bonjour discovery: set `FFSCAN_SUBNET` or `FFSCAN_SCANNER` instead.
+- Browser sign-in for Google Drive, Dropbox or OneDrive. Either mount an rclone config where those accounts are
+  already connected (see the comment in `docker-compose.yml`), or use Amazon S3.
+- The Keychain: pass `ANTHROPIC_API_KEY` in `docker-compose.yml` for AI analysis.
+
+**Docker Desktop on macOS:** if the app can't reach the scanner, allow Docker under *System Settings → Privacy &
+Security → Local Network*. On Linux, `network_mode: host` also works and lets the app search your network by itself.
 
 ### Cloud upload
 
@@ -104,7 +152,7 @@ with FF680W() as scanner:                  # finds the scanner on the network
 ```
  Scanner ──Wi-Fi, TCP 1865──▶ ff680w.py ──▶ app.py pipeline ──▶ your folder ──▶ rclone ──▶ cloud
  (ESC/I-2 inside "IS" packets)   │            │
-                                 │            ├─ crop / straighten       (ff680w.py, sips)
+                                 │            ├─ crop / straighten       (ff680w.py, Pillow)
                                  │            ├─ duplicates              (dupes.py)
                                  │            ├─ enhance, red-eye        (enhance.py, Apple Vision)
                                  │            ├─ rotate (faces)          (tools/orient.swift)
@@ -126,6 +174,8 @@ with FF680W() as scanner:                  # finds the scanner on the network
 | `tests/test_ffscan.py` | Offline tests: `.venv/bin/python tests/test_ffscan.py` |
 | `docs/PROTOCOL.md` | The scanner's network protocol, documented |
 | `docs/ROADMAP.md` | What's done, what's next, known limitations |
+| `Dockerfile`, `docker-compose.yml` | Container setup (see "Run with Docker") |
+| `CLAUDE.md` | Notes for AI coding agents working on this repository |
 
 ## Where things are stored
 
@@ -137,14 +187,15 @@ with FF680W() as scanner:                  # finds the scanner on the network
 | Anthropic API key | macOS Keychain, item `ff680w-anthropic` |
 | Cloud account tokens | rclone's config, `~/.config/rclone/rclone.conf` |
 
-The app listens on `127.0.0.1` only, so it isn't reachable from other devices. Set `FFSCAN_PORT`,
-`FFSCAN_DATA_DIR` or `FFSCAN_CACHE_DIR` to change the defaults.
+The app listens on `127.0.0.1` only, so it isn't reachable from other devices. Environment variables
+`FFSCAN_PORT`, `FFSCAN_BIND`, `FFSCAN_DATA_DIR`, `FFSCAN_CACHE_DIR`, `FFSCAN_PHOTOS_DIR`, `FFSCAN_SCANNER` and
+`FFSCAN_SUBNET` change the defaults (see the top of `ffscan/app.py`).
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
-| *No Epson scanner found* | Check the scanner is on and its Wi-Fi light is steady, on the same network as the Mac. If your network blocks discovery, enter the scanner's address under **Scanner → Address**. |
+| *No Epson scanner found* | Check the scanner is on and its Wi-Fi light is steady, on the same network as the computer. If your network blocks discovery, enter the scanner's address under **Advanced → Address**. With Docker, set `FFSCAN_SUBNET` or `FFSCAN_SCANNER`. |
 | *Feeder is empty* | Push the photos in until they stop, face up, then press **Refresh**. |
 | *Paper jam* | Open the cover, remove the photo, close it, and scan again. Photos already saved are kept. |
 | *Scanner refused lock* | Another app is using the scanner: quit Epson FastFoto, ScanSmart or Epson Scan 2. |
@@ -152,7 +203,7 @@ The app listens on `127.0.0.1` only, so it isn't reachable from other devices. S
 
 ## Limitations
 
-- macOS only: it uses Apple Vision, `sips`, the Keychain and the native folder picker.
+- The full feature set needs macOS (Apple Vision, Bonjour, Keychain, folder picker); Docker runs the rest.
 - Tested with the FF-680W over Wi-Fi. USB and the scanner's own Scan button aren't supported yet.
 - Without AI analysis, auto-rotate only handles photos with faces.
 

@@ -27,9 +27,20 @@
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
   main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 57px); }
-  aside { border-right: 1px solid var(--line); padding: 16px 20px; background: var(--panel); overflow-y: auto; }
-  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 0 8px; }
-  aside h2:first-child { margin-top: 0; }
+  aside { border-right: 1px solid var(--line); padding: 4px 20px 16px; background: var(--panel); overflow-y: auto;
+          position: sticky; top: 57px; height: calc(100vh - 57px); }
+  /* collapsible settings sections; the summary line shows current values when closed */
+  details.section { border-bottom: 1px solid var(--line); padding: 2px 0; }
+  details.section > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+                              padding: 10px 0; user-select: none; }
+  details.section > summary::-webkit-details-marker { display: none; }
+  details.section > summary::before { content: "▸"; color: var(--muted); font-size: 11px; transition: transform .15s; }
+  details.section[open] > summary::before { transform: rotate(90deg); }
+  .sec-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; white-space: nowrap; }
+  .sum { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
+         text-overflow: ellipsis; min-width: 0; }
+  details.section[open] .sum { display: none; }
+  details.section > :last-child { margin-bottom: 10px; }
   label { display: block; margin: 6px 0; }
   label.row { display: flex; align-items: center; gap: 8px; }
   input[type=text], input[type=number], select, textarea { width: 100%; font: inherit; padding: 5px 8px;
@@ -77,8 +88,18 @@
   .cloud[data-state="failed"] { background: var(--bad); color: #fff; }
   .badge { position: absolute; top: 6px; left: 6px; background: var(--accent); color: var(--accent-ink);
            font-size: 11px; padding: 1px 6px; border-radius: 10px; }
-  #log { margin-top: 20px; font: 12px ui-monospace, monospace; color: var(--muted); max-height: 160px; overflow-y: auto;
-         border-top: 1px solid var(--line); padding-top: 8px; }
+  /* activity log pinned to the bottom of the window; minimised it shows just the latest line */
+  .logpanel { position: fixed; left: 300px; right: 0; bottom: 0; z-index: 4; background: var(--panel);
+              border-top: 1px solid var(--line); box-shadow: 0 -4px 14px rgba(0,0,0,.12); }
+  .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 20px; font-size: 12px; }
+  .loghead .spacer { flex: 1; }
+  .loghead button { padding: 2px 8px; font-size: 12px; }
+  #logLast { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #log { height: 150px; overflow-y: auto; padding: 0 20px 8px; font: 12px ui-monospace, monospace; color: var(--muted); }
+  .logpanel.min #log { display: none; }
+  .logpanel:not(.min) #logLast { display: none; }
+  section.content { padding-bottom: 210px; }
+  body.log-min section.content { padding-bottom: 50px; }
   dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); width: min(520px, 92vw); }
   dialog::backdrop { background: rgba(0,0,0,.4); }
   .empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
@@ -89,7 +110,7 @@
   #tooltip { position: fixed; max-width: 280px; padding: 8px 10px; background: var(--ink); color: var(--bg);
              font-size: 12px; line-height: 1.4; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
              z-index: 10; pointer-events: none; display: none; }
-  @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); position: static; height: auto; } .logpanel { left: 0; } }
 </style>
 </head>
 <body>
@@ -103,11 +124,12 @@
 </header>
 <main>
   <aside>
-    <h2 data-tip="The folder on this Mac where scanned photos are saved. Type a path or press Choose… to pick one.">Save to</h2>
+    <details class="section" data-section="save" open>
+      <summary><span class="sec-title" data-tip="The folder on this Mac where scanned photos are saved. Each album gets its own subfolder (or today&#39;s date if no album).">Save to</span><span class="sum" data-sum="save"></span></summary>
     <div class="folder"><input type="text" id="folder" data-key="folder"><button id="pick">Choose…</button></div>
-    <div class="hint">Each album gets its own subfolder (or today's date if no album).</div>
-
-    <h2>Scan</h2>
+    </details>
+    <details class="section" data-section="scan" open>
+      <summary><span class="sec-title">Scan</span><span class="sum" data-sum="scan"></span></summary>
     <label data-tip="Detail level. 300 dpi suits 4×6 prints and is fastest. 600 dpi is the scanner's maximum: best for enlarging or cropping later, about 2× slower and 4× bigger files. 150 dpi is for quick previews or the web.">Resolution
       <select data-key="dpi" data-type="int">
         <option value="300">300 dpi (fast, good for 4×6 prints)</option>
@@ -122,7 +144,10 @@
         <option value="both">Picture and back</option>
         <option value="back">Back only</option>
       </select></label>
-    <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Faint paper-maker logos and lab codes count as blank; handwriting and stamps are kept."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
+    <label class="row" data-tip="After the feeder empties, wait for the next stack and scan it automatically. Press Stop when you're done."><input type="checkbox" data-key="watch"> Keep scanning as I load more photos</label>
+    </details>
+    <details class="section" data-section="processing">
+      <summary><span class="sec-title" data-tip="What happens to each photo after it is scanned. Originals are never changed by enhancement.">Photo processing</span><span class="sum" data-sum="processing"></span></summary>
     <label class="row" data-tip="The scanner always scans the full 8.5″ width. This trims the grey background so each file is just the photo."><input type="checkbox" data-key="crop"> Crop to photo</label>
     <label class="row" data-tip="The scanner straightens photos that went in at a slight angle."><input type="checkbox" data-key="deskew"> Straighten (deskew)</label>
     <label class="row" data-tip="Turns photos upright when they contain faces (Apple's face detection). Photos without people stay as scanned; use the ⟲ ⟳ buttons. Rotation is lossless."><input type="checkbox" data-key="auto_rotate"> Auto-rotate (photos with faces)</label>
@@ -132,31 +157,30 @@
       <label class="row" data-tip="Old prints fade unevenly and drift to a red or magenta cast. This rebalances each colour channel to bring back contrast and neutral colours."><input type="checkbox" data-key="enhance_opts.restore"> Restore faded colours</label>
       <label class="row" data-tip="Measures brightness, contrast and colour saturation of each photo and nudges them toward a natural look: dark photos get lighter, flat ones more contrast, dull ones more colour. Adds slight sharpening."><input type="checkbox" data-key="enhance_opts.auto"> Auto brightness, contrast &amp; saturation</label>
     </div>
-    <label data-tip="Stops the scan if two photos stick together and feed at once, so none get skipped. Sensitive catches more but may stop on thick or curled photos. Off never stops.">Double-feed detection
-      <select data-key="double_feed" data-type="int"><option value="1">Normal</option><option value="3">Sensitive</option><option value="0">Off</option></select></label>
-    <label data-tip="JPEG compression, 50–100. 90 is visually lossless for prints; 95–100 gives bigger files with little visible gain.">JPEG quality <input type="number" min="50" max="100" data-key="quality" data-type="int"></label>
-    <label class="row" data-tip="After the feeder empties, wait for the next stack and scan it automatically. Press Stop when you're done."><input type="checkbox" data-key="watch"> Keep scanning as I load more photos</label>
+    <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Faint paper-maker logos and lab codes count as blank; handwriting and stamps are kept."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
     <label data-tip="Recognises a print you already scanned, even at another resolution, crop or orientation, by comparing a visual fingerprint with every photo in the Save to folder. Mark keeps it and shows a Duplicate badge; Skip doesn't save it at all.">Duplicates
       <select data-key="duplicates"><option value="flag">Mark as duplicate</option><option value="skip">Skip (don't save)</option><option value="off">Don't check</option></select></label>
-
-    <h2 data-tip="Filled in before scanning, these are written into every photo of the batch so Photos, Google Photos, Lightroom etc. can show and search them. Edit single photos afterwards with Edit metadata….">Metadata for this batch</h2>
-    <div class="hint">Written into every photo scanned (EXIF / IPTC / XMP).</div>
+    </details>
+    <details class="section" data-section="metadata">
+      <summary><span class="sec-title" data-tip="Filled in before scanning, these are written into every photo of the batch (EXIF/IPTC/XMP) so Photos, Google Photos, Lightroom etc. can show and search them. Edit single photos afterwards with Edit metadata….">Batch metadata</span><span class="sum" data-sum="metadata"></span></summary>
     <label data-tip="Album name. Also used as the subfolder name inside Save to.">Album <input type="text" data-key="metadata.album" placeholder="e.g. Grandma 1985"></label>
     <label data-tip="When the photos were taken. A year alone (1985) or year-month (1985-07) is fine; missing parts become 01. Apps sort the photos by this date instead of the scan date.">Date taken <input type="text" data-key="metadata.date" placeholder="YYYY, YYYY-MM or YYYY-MM-DD"></label>
     <label data-tip="Where the photos were taken, e.g. Haifa, or Grandma's house.">Place <input type="text" data-key="metadata.place"></label>
     <label data-tip="Names of people in the photos, separated by commas. Stored as 'person in image' so photo apps can search by name.">People <input type="text" data-key="metadata.people" placeholder="comma separated"></label>
     <label data-tip="Keywords, separated by commas, e.g. holiday, beach.">Tags <input type="text" data-key="metadata.tags" placeholder="comma separated"></label>
     <label data-tip="Free text caption stored with every photo of the batch.">Description <textarea data-key="metadata.description"></textarea></label>
-
-    <h2>Cloud upload</h2>
+    </details>
+    <details class="section" data-section="cloud">
+      <summary><span class="sec-title">Cloud upload</span><span class="sum" data-sum="cloud"></span></summary>
     <label class="row" data-tip="Upload every saved photo (and enhanced copy) as soon as it's ready. Failed uploads are retried 3 times; check the log below the photos."><input type="checkbox" data-key="upload.enabled"> Upload each photo automatically</label>
     <div class="field-label" data-tip="Connected cloud accounts. The selected one receives uploads. Connect Google Drive, Google Photos, Dropbox, OneDrive or Amazon S3 with the button below; sign-in happens in your browser.">Accounts</div>
     <div id="accounts"></div>
     <button id="connectBtn" style="margin:6px 0 4px">+ Connect account…</button>
     <label data-tip="Folder inside the cloud account. Photos go to <folder>/<album>/. Press Browse… to pick or create one. For Amazon S3 it starts with the bucket name. Google Photos ignores this: each album becomes a Google Photos album.">Folder in the cloud</label>
     <div class="folder"><input type="text" data-key="upload.path"><button id="browseCloud">Browse…</button></div>
-
-    <h2 data-tip="Sends each picture (and its back, if it has writing) to Claude, Anthropic's AI model. Off by default: your photos leave this Mac only when this is on.">AI analysis</h2>
+    </details>
+    <details class="section" data-section="ai">
+      <summary><span class="sec-title" data-tip="Sends each picture (and its back, if it has writing) to Claude, Anthropic&#39;s AI model. Off by default: your photos leave this Mac only when this is on. It only fills metadata fields you left empty.">AI analysis</span><span class="sum" data-sum="ai"></span></summary>
     <label class="row" data-tip="After each photo is saved, Claude turns it upright if needed (photos without faces too), writes a caption and tags, estimates the year, guesses the place, and reads handwriting on the back. Runs in the background; uploads wait for it."><input type="checkbox" data-key="ai.enabled"> Analyse photos with Claude</label>
     <label data-tip="Anthropic API: needs an API key stored once in the Mac's Keychain (see Help). Google Vertex AI: billed to your Google Cloud project; needs Claude enabled in Model Garden and a quota grant.">Service
       <select data-key="ai.provider"><option value="anthropic">Anthropic API</option><option value="vertex">Google Vertex AI</option></select></label>
@@ -166,13 +190,17 @@
       <div id="keyMissing" class="folder" hidden><input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off"><button id="keySave" type="button">Save</button></div>
       <div id="keyStatus" class="hint"></div>
     </div>
-    <label data-tip="Vertex AI only: your Google Cloud project ID.">Google Cloud project <input type="text" data-key="ai.project" placeholder="Vertex AI only"></label>
-    <label data-tip="Vertex AI only. 'global' is recommended (best availability); use 'us' or 'eu' to keep processing in that region.">Region <input type="text" data-key="ai.region"></label>
-    <div class="hint">Only fills empty fields: what you type in the batch metadata always wins.</div>
-
-    <h2>Scanner</h2>
+    <label class="vertex-only" data-tip="Vertex AI only: your Google Cloud project ID.">Google Cloud project <input type="text" data-key="ai.project" placeholder="Vertex AI only"></label>
+    <label class="vertex-only" data-tip="Vertex AI only. 'global' is recommended (best availability); use 'us' or 'eu' to keep processing in that region.">Region <input type="text" data-key="ai.region"></label>
+    </details>
+    <details class="section" data-section="advanced">
+      <summary><span class="sec-title">Advanced</span><span class="sum" data-sum="advanced"></span></summary>
+    <label data-tip="Stops the scan if two photos stick together and feed at once, so none get skipped. Sensitive catches more but may stop on thick or curled photos. Off never stops.">Double-feed detection
+      <select data-key="double_feed" data-type="int"><option value="1">Normal</option><option value="3">Sensitive</option><option value="0">Off</option></select></label>
+    <label data-tip="JPEG compression, 50–100. 90 is visually lossless for prints; 95–100 gives bigger files with little visible gain.">JPEG quality <input type="number" min="50" max="100" data-key="quality" data-type="int"></label>
     <label data-tip="Leave empty to find the scanner on your network automatically. If that fails, enter its network name (EPSONxxxxxx.local) or IP address, shown on the scanner's network status sheet.">Address <input type="text" data-key="host" placeholder="automatic"></label>
     <div id="device" class="hint"></div>
+    </details>
   </aside>
 
   <section class="content">
@@ -191,9 +219,15 @@
       <span id="uploadText"></span>
     </div>
     <div id="grid"></div>
-    <div id="log"></div>
   </section>
 </main>
+
+<div id="logPanel" class="logpanel">
+  <div class="loghead"><strong>Activity</strong><span id="logLast"></span><span class="spacer"></span>
+    <button id="logClear" type="button" title="Clear the log">Clear</button>
+    <button id="logToggle" type="button" title="Minimise the activity log">▾</button></div>
+  <div id="log" role="log" aria-live="polite"></div>
+</div>
 
 <dialog id="connectDialog">
   <h3 style="margin-top:0">Connect a cloud account</h3>
@@ -271,12 +305,43 @@ function render() {
     const v = getKey(settings, el.dataset.key);
     if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? "";
   });
+  document.querySelectorAll(".vertex-only").forEach(el => { el.hidden = settings.ai?.provider !== "vertex"; });
+  updateSummaries();
 }
+
+// ---------- collapsible sections: one-line summary of current values, open/closed remembered per viewer
+const SIDES = { picture: "picture only", both: "picture + back", back: "back only" };
+function updateSummaries() {
+  const s = settings, on = (v, t) => (v ? t : null), join = a => a.filter(Boolean).join(" · ");
+  const sums = {
+    save: (s.folder || "").replace(/\/$/, "").split("/").slice(-2).join("/"),
+    scan: join([`${s.dpi} dpi`, s.color === "M008" ? "grey" : "colour", SIDES[s.sides], on(s.watch, "keep scanning")]),
+    processing: join([on(s.crop, "crop"), on(s.deskew, "straighten"), on(s.auto_rotate, "rotate"),
+                      on(s.enhance, "enhance"), s.duplicates === "off" ? null : "duplicates"]) || "nothing",
+    metadata: join([s.metadata?.album, s.metadata?.date, s.metadata?.place]) || "none",
+    cloud: s.upload?.remote ? join([s.upload.remote, s.upload.enabled ? "auto" : "manual"]) : "not connected",
+    ai: s.ai?.enabled ? (s.ai.provider === "vertex" ? "on · Vertex AI" : "on · Anthropic") : "off",
+    advanced: join([s.host || "auto-detect", `JPEG ${s.quality}`]),
+  };
+  for (const [k, v] of Object.entries(sums)) {
+    const el = document.querySelector(`.sum[data-sum="${k}"]`); if (el) { el.textContent = v; el.title = v; }
+  }
+}
+const store = {  // per-viewer UI state; storage may be unavailable (private window)
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* not persisted */ } },
+};
+document.querySelectorAll("details.section").forEach(d => {
+  const open = store.get("section." + d.dataset.section, null);
+  if (open !== null) d.open = open;
+  d.addEventListener("toggle", () => store.set("section." + d.dataset.section, d.open));
+});
 document.querySelectorAll("[data-key]").forEach(el => el.addEventListener("change", async () => {
   let v = el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.type === "int") v = parseInt(v, 10);
   const [k, sub] = el.dataset.key.split(".");
   settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(sub ? { [k]: { [sub]: v } } : { [k]: v }) });
+  render();  // refresh section summaries and Vertex-only fields
   if (k === "folder") loadPhotos();
   if (k === "host") checkScanner();
 }));
@@ -321,8 +386,11 @@ async function loadKey() {
 $("#keySave").onclick = async () => {
   $("#keyStatus").textContent = "Checking the key with Anthropic…";
   try {
-    await post("/api/ai/key", { key: $("#keyInput").value });
-    $("#keyInput").value = ""; $("#keyStatus").textContent = "Key works and is saved."; loadKey();
+    const r = await post("/api/ai/key", { key: $("#keyInput").value });
+    $("#keyInput").value = "";
+    $("#keyStatus").textContent = r.persisted ? "Key works and is saved."
+      : "Key works for this session. To keep it, pass ANTHROPIC_API_KEY when starting the container.";
+    loadKey();
   } catch (e) { $("#keyStatus").textContent = e.message; }
 };
 $("#keyRemove").onclick = async () => {
@@ -589,7 +657,17 @@ function log(msg, bad) {
   line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
   if (bad) line.style.color = "var(--bad)";
   $("#log").prepend(line);
+  $("#logLast").textContent = line.textContent; $("#logLast").style.color = bad ? "var(--bad)" : "";
 }
+function setLogMinimised(min) {
+  $("#logPanel").classList.toggle("min", min); document.body.classList.toggle("log-min", min);
+  $("#logToggle").textContent = min ? "▴" : "▾";
+  $("#logToggle").title = min ? "Show the activity log" : "Minimise the activity log";
+  store.set("log.minimised", min);
+}
+$("#logToggle").onclick = () => setLogMinimised(!$("#logPanel").classList.contains("min"));
+$("#logClear").onclick = () => { $("#log").innerHTML = ""; $("#logLast").textContent = ""; };
+setLogMinimised(store.get("log.minimised", false));
 // polled, not streamed: a stream per tab used up the browser's 6 connections to this app
 let nextEvent = 0;
 async function pollEvents() {

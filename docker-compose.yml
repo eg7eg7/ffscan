@@ -1,0 +1,23 @@
+# docker compose up -d   →   open http://localhost:8680
+services:
+  ffscan:
+    build: .
+    image: ffscan
+    ports:
+      - "127.0.0.1:8680:8680"          # only reachable from this computer
+    volumes:
+      - ./photos:/photos               # scanned photos land here, on your computer
+      - ffscan-data:/data              # settings, upload record, duplicate index
+      # - ~/.config/rclone:/root/.config/rclone   # reuse cloud accounts already connected with rclone
+    environment:
+      # Docker Desktop (macOS/Windows) can't see Bonjour: tell the app where to look for the scanner.
+      # Either the first three parts of your home network address (finds the scanner by itself)...
+      FFSCAN_SUBNET: "192.168.1"
+      # ...or the scanner's exact address:
+      # FFSCAN_SCANNER: "192.168.1.50"
+      # For AI analysis (optional):
+      # ANTHROPIC_API_KEY: "sk-ant-..."
+    restart: unless-stopped
+
+volumes:
+  ffscan-data:

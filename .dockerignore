@@ -1,0 +1,12 @@
+.git
+.venv
+scans
+photos
+docs
+tests
+tools
+*.jpg
+*.log
+app_log.txt
+NOTES.local.md
+**/__pycache__

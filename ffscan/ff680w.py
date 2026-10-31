@@ -156,14 +156,18 @@ def _bmp_pixels(bmp):
 
 
 def _thumbnail(path, size=600):
-    """Downscaled BMP bytes of an image file, via macOS's built-in `sips`."""
-    import subprocess
-    import tempfile
+    """Downscaled BMP bytes of an image file, in its stored orientation (crop boxes are in stored pixels)."""
+    import io
 
-    with tempfile.TemporaryDirectory() as tmp:
-        small = os.path.join(tmp, "s.bmp")
-        subprocess.run(["sips", "-Z", str(size), "-s", "format", "bmp", path, "--out", small], check=True, capture_output=True)
-        return open(small, "rb").read()
+    from PIL import Image
+
+    im = Image.open(path)
+    im.draft("RGB", (size, size))  # JPEG: decode at reduced size, fast
+    im = im.convert("RGB")
+    im.thumbnail((size, size))
+    buf = io.BytesIO()
+    im.save(buf, "BMP")
+    return buf.getvalue()
 
 
 def ink_fraction(bmp, threshold=90, border=0.04):
@@ -179,22 +183,22 @@ def ink_fraction(bmp, threshold=90, border=0.04):
 
 
 def autocrop(path, margin=2):
-    """Crop a saved scan to the photo, in place. macOS only: uses the built-in `sips`.
+    """Crop a saved scan to the photo, in place; returns (width, height).
 
-    sips re-encodes the JPEG and drops XMP/IPTC metadata: crop first, write metadata afterwards.
+    Re-encodes once at JPEG quality 95 and keeps EXIF, XMP, ICC profile and DPI.
     """
-    import subprocess
+    from PIL import Image
 
     bmp = _thumbnail(path)
-    sw = struct.unpack_from("<i", bmp, 18)[0]
-    full_w = int(subprocess.run(["sips", "-g", "pixelWidth", path], check=True, capture_output=True, text=True).stdout.split()[-1])
-    scale = full_w / sw
+    thumb_w = struct.unpack_from("<i", bmp, 18)[0]
+    im = Image.open(path)
+    scale = im.width / thumb_w
     # shrink by margin (thumbnail px) to drop the soft edge, then scale to full resolution
-    x0, y0, x1, y1 = (int(v * scale) for v in (lambda b: (b[0] + margin, b[1] + margin, b[2] - margin, b[3] - margin))(find_photo_box(bmp)))
-    w, h = x1 - x0, y1 - y0
-    subprocess.run(["sips", "--cropOffset", str(y0), str(x0), "-c", str(h), str(w),
-                    "-s", "formatOptions", "95", path, "--out", path], check=True, capture_output=True)
-    return w, h
+    bx0, by0, bx1, by1 = find_photo_box(bmp)
+    box = tuple(int(v * scale) for v in (bx0 + margin, by0 + margin, bx1 - margin, by1 - margin))
+    keep = {k: im.info[k] for k in ("exif", "xmp", "icc_profile", "dpi") if im.info.get(k)}
+    im.crop(box).save(path, "JPEG", quality=95, **keep)
+    return box[2] - box[0], box[3] - box[1]
 
 
 class ScannerError(Exception):
@@ -227,7 +231,11 @@ def discover(wait=3.0, refresh=False):
 
 
 def _bonjour(wait):
+    import shutil
     import subprocess
+
+    if not shutil.which("dns-sd"):  # macOS tool; absent in Docker/Linux -> subnet scan instead
+        return None
 
     def run_for(args):
         p = subprocess.Popen(["dns-sd", *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -268,9 +276,10 @@ def _scan_subnet():
     from concurrent.futures import ThreadPoolExecutor
 
     me = _local_ipv4()
-    if not me or me.startswith("127."):
-        return None
-    prefix = me.rsplit(".", 1)[0]  # ponytail: assumes a /24 home network; larger subnets need Bonjour
+    # FFSCAN_SUBNET: the LAN to search when this process can't see it (e.g. Docker Desktop's VM network)
+    prefix = os.environ.get("FFSCAN_SUBNET", "").rstrip(".") or (me.rsplit(".", 1)[0] if me else "")
+    if not prefix or prefix.startswith("127"):
+        return None  # ponytail: /24 only; larger subnets need Bonjour or an explicit address
     candidates = [f"{prefix}.{i}" for i in range(1, 255) if f"{prefix}.{i}" != me]
     with ThreadPoolExecutor(64) as pool:
         for ip, ok in zip(candidates, pool.map(_is_epson_scanner, candidates)):
