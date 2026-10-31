@@ -97,6 +97,11 @@ The first run takes about a minute. It creates a Python environment, installs th
 the small Apple Vision helper. Then it opens **http://localhost:8680** in your browser. Stop the app with
 `Ctrl-C`; start it again any time with `./run.sh` from the `ffscan` folder.
 
+For a double-click icon instead, run `tools/make-desktop-app.sh` once. It puts **FFScan** on the Desktop:
+opening it starts ffscan in the background (or just opens the page if it's already running) and shows a
+message if something goes wrong. The log is in `~/Library/Logs/ffscan.log`. Run the script again if you move
+the `ffscan` folder.
+
 **5. Scan**
 
 1. Make sure the scanner is on and connected to the **same Wi-Fi** as your Mac (use Epson's setup once if it

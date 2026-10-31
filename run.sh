@@ -31,5 +31,6 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 
 PORT="${FFSCAN_PORT:-8680}"
-(sleep 2 && open "http://localhost:$PORT") &
+# Open the browser once the server answers (first start can take a while).
+(until curl -s -o /dev/null "http://localhost:$PORT"; do sleep 0.5; done; open "http://localhost:$PORT") &
 exec .venv/bin/python -m ffscan.app
