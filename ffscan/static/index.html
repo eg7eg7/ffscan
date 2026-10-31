@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FF-680W Scanner</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1f2328; --muted: #6b6f76; --line: #e3e1dc;
+    --accent: #2f6f4f; --accent-ink: #ffffff; --warn: #a15c00; --bad: #b42318; --sel: #dbe9e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181b; --panel: #1f2226; --ink: #e8e6e3; --muted: #9aa0a6; --line: #2e3237;
+            --accent: #5fae86; --accent-ink: #0d1411; --warn: #e3a34f; --bad: #f97066; --sel: #24392e; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }  /* class rules like display:flex must not override hidden */
+  body { margin: 0; font: 14px/1.45 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line);
+           background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #status { color: var(--muted); flex: 1; min-width: 200px; }
+  #status.ok { color: var(--accent); } #status.warn { color: var(--warn); } #status.bad { color: var(--bad); }
+  button, .btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+           padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; }
+  button:hover, .btn:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 57px); }
+  aside { border-right: 1px solid var(--line); padding: 16px 20px; background: var(--panel); overflow-y: auto; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  label { display: block; margin: 6px 0; }
+  label.row { display: flex; align-items: center; gap: 8px; }
+  input[type=text], input[type=number], select, textarea { width: 100%; font: inherit; padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  textarea { resize: vertical; min-height: 48px; }
+  .folder { display: flex; gap: 6px; } .folder input { flex: 1; }
+  .sub { margin-left: 22px; }
+  .field-label { margin: 6px 0 4px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .account { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0;
+             border-bottom: 1px solid var(--line); }
+  .account label { margin: 0; } .acct-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .acct-actions button { padding: 2px 7px; font-size: 12px; }
+  .providers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .provider { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px; }
+  .provider.chosen { border-color: var(--accent); background: var(--sel); }
+  details { margin: 8px 0; } summary { cursor: pointer; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 6px; font-size: 13px; }
+  .crumbs button { padding: 2px 6px; border: 0; background: none; color: var(--accent); }
+  .folder-list { border: 1px solid var(--line); border-radius: 6px; max-height: 300px; overflow-y: auto; min-height: 80px; }
+  .folder-list button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+                        border-radius: 0; padding: 7px 10px; background: none; }
+  .folder-list button:hover { background: var(--sel); }
+  .hint { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
+  section.content { padding: 16px 20px; overflow-y: auto; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; }
+  .card.selected { outline: 2px solid var(--accent); background: var(--sel); }
+  .card img { width: 100%; height: 170px; object-fit: contain; background: var(--bg); display: block; cursor: pointer; }
+  .card .meta { padding: 6px 8px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
+  .card .actions button { padding: 3px 7px; font-size: 12px; white-space: nowrap; }
+  .dup { position: absolute; top: 146px; left: 6px; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+         background: var(--warn); color: #000; cursor: default; }
+  .progress { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; font-size: 13px; color: var(--muted); }
+  .progress .bar { flex: 0 0 240px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .progress .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  .progress .bar span.has-failed { background: linear-gradient(90deg, var(--accent), var(--warn)); }
+  .cloud { position: absolute; top: 6px; right: 6px; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+           background: rgba(0,0,0,.55); color: #fff; cursor: default; }
+  .cloud[data-state="uploaded"] { background: var(--accent); color: var(--accent-ink); }
+  .cloud[data-state="changed"], .cloud[data-state="queued"] { background: var(--warn); color: #000; }
+  .cloud[data-state="failed"] { background: var(--bad); color: #fff; }
+  .badge { position: absolute; top: 6px; left: 6px; background: var(--accent); color: var(--accent-ink);
+           font-size: 11px; padding: 1px 6px; border-radius: 10px; }
+  #log { margin-top: 20px; font: 12px ui-monospace, monospace; color: var(--muted); max-height: 160px; overflow-y: auto;
+         border-top: 1px solid var(--line); padding-top: 8px; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); width: min(520px, 92vw); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+  .tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px;
+         margin-left: 5px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font-size: 10px;
+         font-weight: 600; cursor: help; vertical-align: 1px; text-transform: none; letter-spacing: 0; }
+  .tip:hover, .tip:focus { color: var(--accent); border-color: var(--accent); outline: none; }
+  #tooltip { position: fixed; max-width: 280px; padding: 8px 10px; background: var(--ink); color: var(--bg);
+             font-size: 12px; line-height: 1.4; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+             z-index: 10; pointer-events: none; display: none; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>FF-680W</h1>
+  <span id="status">Checking scanner…</span>
+  <a href="help.html" target="_blank" class="btn">Help</a>
+  <button id="refresh" title="Check scanner status">Refresh</button>
+  <button id="scan" class="primary">Scan</button>
+  <button id="stop" disabled>Stop</button>
+</header>
+<main>
+  <aside>
+    <h2 data-tip="The folder on this Mac where scanned photos are saved. Type a path or press Choose… to pick one.">Save to</h2>
+    <div class="folder"><input type="text" id="folder" data-key="folder"><button id="pick">Choose…</button></div>
+    <div class="hint">Each album gets its own subfolder (or today's date if no album).</div>
+
+    <h2>Scan</h2>
+    <label data-tip="Detail level. 300 dpi suits 4×6 prints and is fastest. 600 dpi is the scanner's maximum: best for enlarging or cropping later, about 2× slower and 4× bigger files. 150 dpi is for quick previews or the web.">Resolution
+      <select data-key="dpi" data-type="int">
+        <option value="300">300 dpi (fast, good for 4×6 prints)</option>
+        <option value="600">600 dpi (max detail, ~2× slower)</option>
+        <option value="150">150 dpi (preview / web)</option>
+      </select></label>
+    <label data-tip="Colour keeps everything as is. Greyscale saves black-and-white files (smaller), useful for old B&W prints.">Colour
+      <select data-key="color"><option value="C024">Colour</option><option value="M008">Greyscale</option></select></label>
+    <label data-tip="The scanner reads both sides of every photo in one pass. Picture only saves just the image. Picture and back also saves the back (dates or notes written on it). Back only saves just the backs.">Sides
+      <select data-key="sides">
+        <option value="picture">Picture only</option>
+        <option value="both">Picture and back</option>
+        <option value="back">Back only</option>
+      </select></label>
+    <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Faint paper-maker logos and lab codes count as blank; handwriting and stamps are kept."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
+    <label class="row" data-tip="The scanner always scans the full 8.5″ width. This trims the grey background so each file is just the photo."><input type="checkbox" data-key="crop"> Crop to photo</label>
+    <label class="row" data-tip="The scanner straightens photos that went in at a slight angle."><input type="checkbox" data-key="deskew"> Straighten (deskew)</label>
+    <label class="row" data-tip="Turns photos upright when they contain faces (Apple's face detection). Photos without people stay as scanned; use the ⟲ ⟳ buttons. Rotation is lossless."><input type="checkbox" data-key="auto_rotate"> Auto-rotate (photos with faces)</label>
+    <label class="row" data-tip="Saves a second copy (…_enhanced.jpg) with the fixes ticked below. The original scan is always kept unchanged. The Enhance button on each photo uses the same fixes."><input type="checkbox" data-key="enhance"> Also save an enhanced copy</label>
+    <div class="sub">
+      <label class="row" data-tip="Finds eyes with Apple's face detection and neutralises red flash reflections in the pupils. Only strongly red pixels inside the eyes are changed; skin is left alone."><input type="checkbox" data-key="enhance_opts.red_eye"> Remove red-eye</label>
+      <label class="row" data-tip="Old prints fade unevenly and drift to a red or magenta cast. This rebalances each colour channel to bring back contrast and neutral colours."><input type="checkbox" data-key="enhance_opts.restore"> Restore faded colours</label>
+      <label class="row" data-tip="Measures brightness, contrast and colour saturation of each photo and nudges them toward a natural look: dark photos get lighter, flat ones more contrast, dull ones more colour. Adds slight sharpening."><input type="checkbox" data-key="enhance_opts.auto"> Auto brightness, contrast &amp; saturation</label>
+    </div>
+    <label data-tip="Stops the scan if two photos stick together and feed at once, so none get skipped. Sensitive catches more but may stop on thick or curled photos. Off never stops.">Double-feed detection
+      <select data-key="double_feed" data-type="int"><option value="1">Normal</option><option value="3">Sensitive</option><option value="0">Off</option></select></label>
+    <label data-tip="JPEG compression, 50–100. 90 is visually lossless for prints; 95–100 gives bigger files with little visible gain.">JPEG quality <input type="number" min="50" max="100" data-key="quality" data-type="int"></label>
+    <label class="row" data-tip="After the feeder empties, wait for the next stack and scan it automatically. Press Stop when you're done."><input type="checkbox" data-key="watch"> Keep scanning as I load more photos</label>
+    <label data-tip="Recognises a print you already scanned, even at another resolution, crop or orientation, by comparing a visual fingerprint with every photo in the Save to folder. Mark keeps it and shows a Duplicate badge; Skip doesn't save it at all.">Duplicates
+      <select data-key="duplicates"><option value="flag">Mark as duplicate</option><option value="skip">Skip (don't save)</option><option value="off">Don't check</option></select></label>
+
+    <h2 data-tip="Filled in before scanning, these are written into every photo of the batch so Photos, Google Photos, Lightroom etc. can show and search them. Edit single photos afterwards with Edit metadata….">Metadata for this batch</h2>
+    <div class="hint">Written into every photo scanned (EXIF / IPTC / XMP).</div>
+    <label data-tip="Album name. Also used as the subfolder name inside Save to.">Album <input type="text" data-key="metadata.album" placeholder="e.g. Grandma 1985"></label>
+    <label data-tip="When the photos were taken. A year alone (1985) or year-month (1985-07) is fine; missing parts become 01. Apps sort the photos by this date instead of the scan date.">Date taken <input type="text" data-key="metadata.date" placeholder="YYYY, YYYY-MM or YYYY-MM-DD"></label>
+    <label data-tip="Where the photos were taken, e.g. Haifa, or Grandma's house.">Place <input type="text" data-key="metadata.place"></label>
+    <label data-tip="Names of people in the photos, separated by commas. Stored as 'person in image' so photo apps can search by name.">People <input type="text" data-key="metadata.people" placeholder="comma separated"></label>
+    <label data-tip="Keywords, separated by commas, e.g. holiday, beach.">Tags <input type="text" data-key="metadata.tags" placeholder="comma separated"></label>
+    <label data-tip="Free text caption stored with every photo of the batch.">Description <textarea data-key="metadata.description"></textarea></label>
+
+    <h2>Cloud upload</h2>
+    <label class="row" data-tip="Upload every saved photo (and enhanced copy) as soon as it's ready. Failed uploads are retried 3 times; check the log below the photos."><input type="checkbox" data-key="upload.enabled"> Upload each photo automatically</label>
+    <div class="field-label" data-tip="Connected cloud accounts. The selected one receives uploads. Connect Google Drive, Google Photos, Dropbox, OneDrive or Amazon S3 with the button below; sign-in happens in your browser.">Accounts</div>
+    <div id="accounts"></div>
+    <button id="connectBtn" style="margin:6px 0 4px">+ Connect account…</button>
+    <label data-tip="Folder inside the cloud account. Photos go to <folder>/<album>/. Press Browse… to pick or create one. For Amazon S3 it starts with the bucket name. Google Photos ignores this: each album becomes a Google Photos album.">Folder in the cloud</label>
+    <div class="folder"><input type="text" data-key="upload.path"><button id="browseCloud">Browse…</button></div>
+
+    <h2 data-tip="Sends each picture (and its back, if it has writing) to Claude, Anthropic's AI model. Off by default: your photos leave this Mac only when this is on.">AI analysis</h2>
+    <label class="row" data-tip="After each photo is saved, Claude turns it upright if needed (photos without faces too), writes a caption and tags, estimates the year, guesses the place, and reads handwriting on the back. Runs in the background; uploads wait for it."><input type="checkbox" data-key="ai.enabled"> Analyse photos with Claude</label>
+    <label data-tip="Anthropic API: needs an API key stored once in the Mac's Keychain (see Help). Google Vertex AI: billed to your Google Cloud project; needs Claude enabled in Model Garden and a quota grant.">Service
+      <select data-key="ai.provider"><option value="anthropic">Anthropic API</option><option value="vertex">Google Vertex AI</option></select></label>
+    <div id="keyBox">
+      <div class="field-label" data-tip="Anthropic API only. Create a key at console.anthropic.com → API Keys and paste it here. It is checked with Anthropic, then stored in this Mac's Keychain, never in a file. Usage is billed to your Anthropic account.">API key</div>
+      <div id="keyPresent" class="folder" hidden><span class="hint" style="flex:1">✓ Key saved in Keychain</span><button id="keyRemove" type="button">Remove</button></div>
+      <div id="keyMissing" class="folder" hidden><input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off"><button id="keySave" type="button">Save</button></div>
+      <div id="keyStatus" class="hint"></div>
+    </div>
+    <label data-tip="Vertex AI only: your Google Cloud project ID.">Google Cloud project <input type="text" data-key="ai.project" placeholder="Vertex AI only"></label>
+    <label data-tip="Vertex AI only. 'global' is recommended (best availability); use 'us' or 'eu' to keep processing in that region.">Region <input type="text" data-key="ai.region"></label>
+    <div class="hint">Only fills empty fields: what you type in the batch metadata always wins.</div>
+
+    <h2>Scanner</h2>
+    <label data-tip="Leave empty to find the scanner on your network automatically. If that fails, enter its network name (EPSONxxxxxx.local) or IP address, shown on the scanner's network status sheet.">Address <input type="text" data-key="host" placeholder="automatic"></label>
+    <div id="device" class="hint"></div>
+  </aside>
+
+  <section class="content">
+    <div class="toolbar">
+      <strong id="count">Photos</strong><span class="spacer"></span>
+      <button id="selAll">Select all</button>
+      <button id="editMeta" disabled>Edit metadata…</button>
+      <button id="analyzeSel" disabled title="Analyse the selected photos with Claude (rotation, caption, tags, date, place)">Analyse</button>
+      <button id="uploadSel" disabled title="Upload the selected photos">Upload selected</button>
+      <button id="uploadNew" title="Upload every photo that isn't in the cloud yet or was changed since it was uploaded">☁ Upload new</button>
+      <button id="selDupes" title="Select every photo marked Duplicate (later scans of a print you already have)">Select duplicates</button>
+      <button id="deleteSel" disabled title="Move the selected photos to the Trash">Delete selected</button>
+    </div>
+    <div id="uploadBar" class="progress" hidden>
+      <div class="bar"><span id="uploadFill"></span></div>
+      <span id="uploadText"></span>
+    </div>
+    <div id="grid"></div>
+    <div id="log"></div>
+  </section>
+</main>
+
+<dialog id="connectDialog">
+  <h3 style="margin-top:0">Connect a cloud account</h3>
+  <div id="providerList" class="providers"></div>
+  <div id="connectForm"></div>
+  <p id="connectStatus" class="hint"></p>
+  <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
+    <button id="connectCancel" type="button">Close</button><button id="connectGo" type="button" class="primary" hidden>Connect</button></div>
+</dialog>
+
+<dialog id="folderDialog">
+  <h3 style="margin-top:0">Choose a folder in <span id="folderAccount"></span></h3>
+  <div id="crumbs" class="crumbs"></div>
+  <div id="folderList" class="folder-list"></div>
+  <div class="folder" style="margin-top:8px"><input type="text" id="newFolder" placeholder="New folder name"><button id="makeFolder" type="button">Create</button></div>
+  <p id="folderStatus" class="hint"></p>
+  <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
+    <button id="folderCancel" type="button">Cancel</button><button id="folderUse" type="button" class="primary">Upload here</button></div>
+</dialog>
+
+<dialog id="metaDialog">
+  <form method="dialog">
+    <h3 style="margin-top:0">Metadata for <span id="metaCount"></span></h3>
+    <div class="hint">Empty fields are left unchanged. People and tags are added to existing ones.</div>
+    <label>Title <input type="text" name="title"></label>
+    <label>Album <input type="text" name="album"></label>
+    <label>Date taken <input type="text" name="date" placeholder="YYYY, YYYY-MM or YYYY-MM-DD"></label>
+    <label>Place <input type="text" name="place"></label>
+    <label>People <input type="text" name="people"></label>
+    <label>Tags <input type="text" name="tags"></label>
+    <label>Description <textarea name="description"></textarea></label>
+    <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
+      <button value="cancel">Cancel</button><button value="save" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (path, opts = {}) => fetch(path, { headers: { "Content-Type": "application/json" }, ...opts })
+  .then(async r => { if (!r.ok) throw new Error((await r.json()).detail || r.statusText); return r.json(); });
+const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
+const fileUrl = (f, v) => `/api/file?file=${encodeURIComponent(f)}&v=${v || 0}`;
+const thumbUrl = (f, v) => `/api/thumb?file=${encodeURIComponent(f)}&v=${v || 0}`;
+const selected = new Set();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let settings = {};
+
+// ---------- tooltips: every [data-tip] gets a focusable ⓘ right after its label text
+const tooltip = Object.assign(document.createElement("div"), { id: "tooltip", role: "tooltip" });
+document.body.append(tooltip);
+function showTip(icon) {
+  tooltip.textContent = icon.dataset.text; tooltip.style.display = "block";
+  const r = icon.getBoundingClientRect(), t = tooltip.getBoundingClientRect();
+  const left = Math.min(r.right + 8, innerWidth - t.width - 8);        // right of the icon, kept on screen
+  const top = Math.min(r.top - 4, innerHeight - t.height - 8);
+  tooltip.style.left = Math.max(8, left) + "px"; tooltip.style.top = Math.max(8, top) + "px";
+}
+const hideTip = () => { tooltip.style.display = "none"; };
+document.querySelectorAll("[data-tip]").forEach(el => {
+  const tip = document.createElement("span");
+  tip.className = "tip"; tip.tabIndex = 0; tip.textContent = "i";
+  tip.dataset.text = el.dataset.tip; tip.setAttribute("aria-label", el.dataset.tip);
+  tip.addEventListener("click", e => { e.preventDefault(); showTip(tip); });  // don't toggle the label's checkbox
+  tip.addEventListener("mouseenter", () => showTip(tip)); tip.addEventListener("focus", () => showTip(tip));
+  tip.addEventListener("mouseleave", hideTip); tip.addEventListener("blur", hideTip);
+  const firstText = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+  firstText ? firstText.after(tip) : el.append(tip);
+});
+document.querySelector("aside").addEventListener("scroll", hideTip);
+
+// ---------- settings: every [data-key] control is bound to settings.json
+const getKey = (obj, key) => key.split(".").reduce((o, k) => o?.[k], obj);
+function render() {
+  document.querySelectorAll("[data-key]").forEach(el => {
+    const v = getKey(settings, el.dataset.key);
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? "";
+  });
+}
+document.querySelectorAll("[data-key]").forEach(el => el.addEventListener("change", async () => {
+  let v = el.type === "checkbox" ? el.checked : el.value;
+  if (el.dataset.type === "int") v = parseInt(v, 10);
+  const [k, sub] = el.dataset.key.split(".");
+  settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(sub ? { [k]: { [sub]: v } } : { [k]: v }) });
+  if (k === "folder") loadPhotos();
+  if (k === "host") checkScanner();
+}));
+
+// ---------- cloud accounts
+async function loadRemotes() {
+  const list = await api("/api/remotes"), box = $("#accounts");
+  if (!list.length) { box.innerHTML = `<div class="hint">No accounts connected yet.</div>`; return; }
+  box.innerHTML = "";
+  for (const r of list) {
+    const row = document.createElement("div");
+    row.className = "account";
+    row.innerHTML = `<label class="row"><input type="radio" name="remote" value="${r.name}"> <span><strong>${r.label}</strong>
+      <span class="muted">${r.name}</span></span></label>
+      <span class="acct-actions"><button data-a="test">Test</button><button data-a="remove">Remove</button></span>`;
+    const radio = row.querySelector("input");
+    radio.checked = settings.upload?.remote === r.name;
+    radio.onchange = async () => {
+      settings = await api("/api/settings", { method: "PUT", body: JSON.stringify({ upload: { remote: r.name } }) });
+    };
+    row.querySelector(".acct-actions").onclick = async ev => {
+      const a = ev.target.dataset.a; if (!a) return;
+      if (a === "test") {
+        ev.target.textContent = "…";
+        const t = await post(`/api/remotes/${encodeURIComponent(r.name)}/test`);
+        ev.target.textContent = "Test"; log(`${r.label} (${r.name}): ${t.message}`, !t.ok);
+      } else if (confirm(`Disconnect ${r.label} (${r.name})? Photos already uploaded stay in the cloud.`)) {
+        await api(`/api/remotes/${encodeURIComponent(r.name)}`, { method: "DELETE" });
+        settings = await api("/api/settings"); loadRemotes(); log(`Disconnected ${r.label}`);
+      }
+    };
+    box.append(row);
+  }
+}
+
+// ---------- Anthropic API key (stored in the Keychain by the server; never sent back to the page)
+async function loadKey() {
+  const k = await api("/api/ai/key");
+  $("#keyPresent").hidden = !k.present; $("#keyMissing").hidden = k.present;
+  $("#keyBox").hidden = settings.ai?.provider === "vertex";
+}
+$("#keySave").onclick = async () => {
+  $("#keyStatus").textContent = "Checking the key with Anthropic…";
+  try {
+    await post("/api/ai/key", { key: $("#keyInput").value });
+    $("#keyInput").value = ""; $("#keyStatus").textContent = "Key works and is saved."; loadKey();
+  } catch (e) { $("#keyStatus").textContent = e.message; }
+};
+$("#keyRemove").onclick = async () => {
+  if (!confirm("Remove the Anthropic API key from this Mac's Keychain?")) return;
+  await api("/api/ai/key", { method: "DELETE" }); $("#keyStatus").textContent = ""; loadKey();
+};
+document.querySelector('[data-key="ai.provider"]').addEventListener("change", () => setTimeout(loadKey, 300));
+
+// ---------- cloud folder browser
+let browsePath = "";
+async function openFolderBrowser() {
+  const remote = settings.upload?.remote;
+  if (!remote) { log("Connect and choose a cloud account first", true); return; }
+  const r = (await api("/api/remotes")).find(x => x.name === remote);
+  if (r?.type === "googlephotos") { log("Google Photos needs no folder: each album becomes a Google Photos album."); return; }
+  $("#folderAccount").textContent = r ? r.label : remote;
+  $("#folderDialog").showModal();
+  showFolder((settings.upload.path || "").replace(/^\/|\/$/g, ""));
+}
+async function showFolder(path) {
+  browsePath = path;
+  const parts = path ? path.split("/") : [];
+  $("#crumbs").innerHTML = `<button data-p="">${esc($("#folderAccount").textContent)}</button>` +
+    parts.map((p, i) => `› <button data-p="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`).join("");
+  $("#folderList").innerHTML = `<div class="hint" style="padding:10px">Loading…</div>`;
+  $("#folderStatus").textContent = path ? `Photos will go to “${path}/<album>/”.` : "Photos will go to “<album>/” at the top level.";
+  try {
+    const r = await api(`/api/remotes/${encodeURIComponent(settings.upload.remote)}/folders?path=${encodeURIComponent(path)}`);
+    $("#folderList").innerHTML = r.folders.length
+      ? r.folders.map(f => `<button data-f="${esc(f)}">📁 ${esc(f)}</button>`).join("")
+      : `<div class="hint" style="padding:10px">No folders here. Create one below, or upload here.</div>`;
+  } catch (e) {
+    // a folder that doesn't exist yet (typed by hand) is fine: it's created on first upload
+    $("#folderList").innerHTML = `<div class="hint" style="padding:10px">${esc(e.message)}</div>`;
+  }
+}
+$("#crumbs").onclick = ev => { const b = ev.target.closest("button"); if (b) showFolder(b.dataset.p); };
+$("#folderList").onclick = ev => {
+  const b = ev.target.closest("button[data-f]"); if (b) showFolder(browsePath ? `${browsePath}/${b.dataset.f}` : b.dataset.f);
+};
+$("#makeFolder").onclick = async () => {
+  const name = $("#newFolder").value.trim().replace(/\//g, "-"); if (!name) return;
+  const path = browsePath ? `${browsePath}/${name}` : name;
+  try {
+    await post(`/api/remotes/${encodeURIComponent(settings.upload.remote)}/folders`, { path });
+    $("#newFolder").value = ""; showFolder(path);
+  } catch (e) { $("#folderStatus").textContent = "Couldn't create it: " + e.message; }
+};
+$("#folderUse").onclick = async () => {
+  settings = await api("/api/settings", { method: "PUT", body: JSON.stringify({ upload: { path: browsePath } }) });
+  render(); $("#folderDialog").close(); log(`Uploads will go to “${browsePath || "(top level)"}”`);
+};
+$("#folderCancel").onclick = () => $("#folderDialog").close();
+$("#browseCloud").onclick = openFolderBrowser;
+
+let providers = [];
+$("#connectBtn").onclick = async () => {
+  providers = providers.length ? providers : await api("/api/cloud-providers");
+  const d = $("#connectDialog");
+  $("#providerList").innerHTML = providers.map(p =>
+    `<button type="button" class="provider" data-id="${p.id}"><strong>${p.label}</strong><span class="muted">${p.note || (p.oauth ? "Sign in with your browser." : "")}</span></button>`).join("");
+  $("#connectForm").innerHTML = ""; $("#connectStatus").textContent = ""; $("#connectGo").hidden = true;
+  d.showModal();
+};
+$("#providerList").onclick = ev => {
+  const b = ev.target.closest(".provider"); if (!b) return;
+  const p = providers.find(x => x.id === b.dataset.id);
+  document.querySelectorAll(".provider").forEach(x => x.classList.toggle("chosen", x === b));
+  const googleFields = p.id === "drive" || p.id === "googlephotos"
+    ? `<details><summary class="muted">Use my own Google client ID (only if sign-in is refused)</summary>
+         <label>Client ID <input type="text" name="client_id"></label>
+         <label>Client secret <input type="password" name="client_secret"></label>
+         <div class="hint">Google Cloud console → APIs &amp; Services → Credentials → Create OAuth client ID → Desktop app.</div></details>` : "";
+  $("#connectForm").innerHTML = p.fields.map(f =>
+    `<label>${f.label} <input name="${f.name}" type="${f.secret ? "password" : "text"}" autocomplete="off"></label>`).join("") + googleFields;
+  $("#connectForm").dataset.provider = p.id;
+  $("#connectGo").hidden = false;
+  $("#connectGo").textContent = p.oauth ? `Sign in to ${p.label}` : "Connect";
+};
+$("#connectGo").onclick = async () => {
+  const form = $("#connectForm"), fields = {};
+  form.querySelectorAll("input").forEach(i => { if (i.value) fields[i.name] = i.value; });
+  $("#connectGo").hidden = true;
+  await post("/api/remotes", { provider: form.dataset.provider, fields });
+};
+$("#connectCancel").onclick = () => { post("/api/remotes/cancel"); $("#connectDialog").close(); };
+
+$("#pick").onclick = async () => {
+  const r = await post("/api/pick-folder");
+  if (r.folder) { settings = r; render(); loadPhotos(); }
+};
+
+// ---------- scanner status
+async function checkScanner() {
+  const st = $("#status");
+  st.textContent = "Checking scanner…"; st.className = "";
+  const r = await api("/api/scanner");
+  st.textContent = r.message;
+  st.className = !r.online ? "bad" : r.busy || r.ready ? "ok" : "warn";
+  if (r.model) $("#device").textContent = `${r.model} · S/N ${r.serial} · firmware ${r.firmware}`;
+}
+$("#refresh").onclick = checkScanner;
+
+// ---------- scanning
+function setScanning(on) { $("#scan").disabled = on; $("#stop").disabled = !on; }
+$("#scan").onclick = async () => {
+  try { await post("/api/scan"); setScanning(true); } catch (e) { log(e.message, true); }
+};
+$("#stop").onclick = () => post("/api/cancel");
+
+// ---------- photo grid
+function card(file, rotation) {
+  const name = file.split("/").pop();
+  const el = document.createElement("div");
+  el.className = "card"; el.dataset.file = file;
+  el.innerHTML = `<img loading="lazy" alt="${name}" src="${thumbUrl(file)}">
+    ${rotation ? `<span class="badge">auto-rotated ${rotation}°</span>` : ""}
+    <span class="cloud"></span>
+    <div class="meta" title="${file}">${name}</div>
+    <div class="actions">
+      <button data-a="left" title="Rotate left">⟲</button><button data-a="right" title="Rotate right">⟳</button>
+      <button data-a="enhance" title="Save an enhanced copy">Enhance</button>
+      <button data-a="upload" title="Upload this photo to the cloud account chosen under Cloud upload">☁ Upload</button>
+      <button data-a="open" title="Open full size">Open</button>
+      <button data-a="delete" title="Move to the Trash">Delete</button>
+    </div>`;
+  el.querySelector("img").onclick = () => { el.classList.toggle("selected");
+    el.classList.contains("selected") ? selected.add(file) : selected.delete(file); updateToolbar(); };
+  el.querySelector(".actions").onclick = async ev => {
+    const a = ev.target.dataset.a; if (!a) return;
+    try {
+      if (a === "left" || a === "right") {
+        await post("/api/rotate", { file, degrees: a === "left" ? 270 : 90 });
+        el.querySelector("img").src = thumbUrl(file, Date.now());
+        el.querySelector(".badge")?.remove();
+      } else if (a === "enhance") {
+        const r = await post("/api/enhance", { file });
+        log(`Enhanced copy: ${r.file.split("/").pop()} (${r.steps.join(", ") || "no fixes ticked"})`);
+      } else if (a === "upload") {
+        await post("/api/upload", { files: [file] });  // badge turns to "Uploading…" via the upload_queued event
+      } else if (a === "open") {
+        window.open(fileUrl(file), "_blank");
+      } else if (a === "delete" && confirm(`Move ${name} to the Trash?`)) {
+        await post("/api/delete", { file }); el.remove(); selected.delete(file); updateToolbar();
+      }
+    } catch (e) { log(e.message, true); }
+  };
+  return el;
+}
+function addPhoto(file, rotation, top = true, upload = null, dest = null, duplicateOf = null) {
+  if (document.querySelector(`.card[data-file="${CSS.escape(file)}"]`)) return;
+  $(".empty")?.remove();
+  const g = $("#grid"), c = card(file, rotation);
+  top ? g.prepend(c) : g.append(c);
+  setCloud(file, upload, dest);
+  if (duplicateOf) {
+    c.dataset.duplicateOf = duplicateOf;
+    c.insertAdjacentHTML("beforeend", `<span class="dup" title="Same print as ${esc(duplicateOf.split("/").pop())} (${esc(duplicateOf.split("/").slice(-2, -1)[0])})">Duplicate</span>`);
+  }
+  updateToolbar();
+}
+
+// ---------- upload progress bar (one bar for the whole queue)
+let uploadsFinishedAt = 0;
+function showUploadProgress(u) {
+  const bar = $("#uploadBar");
+  if (!u.total) { bar.hidden = true; return; }
+  if (u.active) uploadsFinishedAt = 0; else if (!uploadsFinishedAt) uploadsFinishedAt = Date.now();
+  if (!u.active && Date.now() - uploadsFinishedAt > 6000) { bar.hidden = true; return; }  // fade out after finishing
+  bar.hidden = false;
+  const finished = u.done + u.failed;
+  $("#uploadFill").style.width = `${Math.round(100 * finished / u.total)}%`;
+  $("#uploadFill").classList.toggle("has-failed", u.failed > 0);
+  $("#uploadText").textContent = u.active
+    ? `Uploading ${finished + 1} of ${u.total}${u.current ? ` · ${u.current}` : ""}${u.failed ? ` · ${u.failed} failed` : ""}`
+    : `Uploaded ${u.done} of ${u.total}${u.failed ? ` · ${u.failed} failed (see log)` : " ✓"}`;
+}
+const CLOUD = {  // upload state -> badge text + tooltip
+  uploaded: ["☁ Uploaded", d => `Uploaded to ${d}`],
+  changed: ["☁ Changed", d => `Edited after it was uploaded to ${d}. Upload again to replace the cloud copy.`],
+  queued: ["☁ Uploading…", () => "Waiting to upload"],
+  failed: ["☁ Failed", d => `Upload to ${d} failed; see the log. Select it and press Upload to retry.`],
+  null: ["Not uploaded", () => "Not in the cloud yet. Select it and press Upload, or turn on automatic upload."],
+};
+function setCloud(file, state, dest) {
+  const b = document.querySelector(`.card[data-file="${CSS.escape(file)}"] .cloud`);
+  if (!b) return;
+  const [text, tip] = CLOUD[state] || CLOUD.null;
+  b.textContent = text; b.title = tip(dest || ""); b.dataset.state = state || "none";
+}
+async function loadPhotos() {
+  $("#grid").innerHTML = ""; selected.clear();
+  const list = await api("/api/photos");
+  list.forEach(p => addPhoto(p.file, 0, false, p.upload, p.dest, p.duplicate_of));
+  if (!list.length) $("#grid").innerHTML = `<div class="empty">No photos yet. Load photos face up and press Scan.</div>`;
+  updateToolbar();
+}
+function updateToolbar() {
+  const n = document.querySelectorAll(".card").length;
+  $("#count").textContent = `${n} photo${n === 1 ? "" : "s"}` + (selected.size ? ` · ${selected.size} selected` : "");
+  $("#editMeta").disabled = $("#uploadSel").disabled = $("#analyzeSel").disabled = $("#deleteSel").disabled = !selected.size;
+  const dupes = document.querySelectorAll(".card[data-duplicate-of]").length;
+  $("#selDupes").textContent = `Select duplicates${dupes ? ` (${dupes})` : ""}`; $("#selDupes").disabled = !dupes;
+}
+$("#selAll").onclick = () => {
+  const cards = document.querySelectorAll(".card"), all = selected.size !== cards.length;
+  cards.forEach(c => { c.classList.toggle("selected", all); all ? selected.add(c.dataset.file) : selected.delete(c.dataset.file); });
+  updateToolbar();
+};
+
+// ---------- metadata editing
+$("#editMeta").onclick = async () => {
+  const d = $("#metaDialog"), form = d.querySelector("form");
+  form.reset();
+  $("#metaCount").textContent = selected.size === 1 ? "1 photo" : `${selected.size} photos`;
+  if (selected.size === 1) {
+    const md = await api("/api/metadata?file=" + encodeURIComponent([...selected][0]));
+    for (const [k, v] of Object.entries(md)) if (form.elements[k]) form.elements[k].value = v;
+  }
+  d.showModal();
+  d.onclose = async () => {
+    if (d.returnValue !== "save") return;
+    const metadata = Object.fromEntries(new FormData(form));
+    const r = await api("/api/metadata", { method: "PUT", body: JSON.stringify({ files: [...selected], metadata }) });
+    log(`Metadata saved to ${r.updated} photo(s)`);
+  };
+};
+$("#analyzeSel").onclick = async () => {
+  try { const r = await post("/api/analyze", { files: [...selected] }); log(`Analysing ${r.queued} photo(s)…`); }
+  catch (e) { log(e.message, true); }
+};
+$("#selDupes").onclick = () => {
+  document.querySelectorAll(".card").forEach(c => {
+    const dup = "duplicateOf" in c.dataset;
+    c.classList.toggle("selected", dup); dup ? selected.add(c.dataset.file) : selected.delete(c.dataset.file);
+  });
+  updateToolbar();
+  log(`Selected ${selected.size} duplicate(s). The first scan of each print is kept unselected; review, then Delete selected.`);
+};
+$("#deleteSel").onclick = async () => {
+  const files = [...selected];
+  if (!confirm(`Move ${files.length} photo(s) to the Trash? You can put them back from the Trash.`)) return;
+  try {
+    const r = await post("/api/delete", { files });
+    files.forEach(f => document.querySelector(`.card[data-file="${CSS.escape(f)}"]`)?.remove());
+    selected.clear(); updateToolbar(); log(`Moved ${r.deleted} photo(s) to the Trash`);
+  } catch (e) { log(e.message, true); }
+};
+$("#uploadNew").onclick = async () => {
+  const n = [...document.querySelectorAll(".cloud")].filter(b => !["uploaded", "queued"].includes(b.dataset.state)).length;
+  if (!n) { log("Everything is already uploaded."); return; }
+  if (!confirm(`Upload ${n} photo(s) that aren't in the cloud yet (or changed since)?`)) return;
+  try { const r = await post("/api/upload", { pending: true }); log(`Queued ${r.queued} for upload`); }
+  catch (e) { log(e.message, true); }
+};
+$("#uploadSel").onclick = async () => {
+  try { const r = await post("/api/upload", { files: [...selected] }); log(`Queued ${r.queued} for upload`); }
+  catch (e) { log(e.message, true); }
+};
+
+// ---------- live events
+function log(msg, bad) {
+  const line = document.createElement("div");
+  line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+  if (bad) line.style.color = "var(--bad)";
+  $("#log").prepend(line);
+}
+// polled, not streamed: a stream per tab used up the browser's 6 connections to this app
+let nextEvent = 0;
+async function pollEvents() {
+  try {
+    for (const e of await api(`/api/events?since=${nextEvent}`)) { nextEvent = e.id + 1; handleEvent(e); }
+    showUploadProgress(await api("/api/uploads"));
+  } catch { /* server restarting: try again next tick */ }
+  setTimeout(pollEvents, 1000);
+}
+function handleEvent(e) {
+  const age = Date.now() / 1000 - e.time;
+  if (age > 5 && e.kind !== "photo") return;  // replayed history: only show photos
+  switch (e.kind) {
+    case "job_started": setScanning(true); log("Scanning into " + e.folder); break;
+    case "stack_started": log("Feeding photos…"); break;
+    case "photo":
+      addPhoto(e.file, e.rotation, true, null, null, e.duplicate_of);
+      if (age < 5) log("Saved " + e.file.split("/").pop() + (e.duplicate_of ? ` (duplicate of ${e.duplicate_of.split("/").pop()})` : ""));
+      break;
+    case "skipped": log(`Skipped photo ${e.index + 1} ${e.reason}`); break;
+    case "waiting": log(e.message); $("#status").textContent = e.message; $("#status").className = "warn"; break;
+    case "photo_updated": {
+      const c = document.querySelector(`.card[data-file="${CSS.escape(e.file)}"]`);
+      if (c) {
+        c.querySelector("img").src = thumbUrl(e.file, Date.now());
+        const m = c.querySelector(".meta");
+        m.textContent = e.caption; m.title = [e.caption, e.date && "Date: " + e.date, e.back_text && "Back: " + e.back_text].filter(Boolean).join("\n");
+      }
+      if (age < 5) log(`Analysed ${e.file.split("/").pop()}: ${e.caption}${e.rotation ? ` (rotated ${e.rotation}°)` : ""}`);
+      break;
+    }
+    case "ai_failed": log(`AI analysis failed (${e.file.split("/").pop()}): ${e.error}`, true); break;
+    case "remote_connecting":
+      $("#connectStatus").textContent = e.oauth
+        ? "A sign-in page opened in your browser. Approve access there; this window updates when you're done."
+        : "Connecting…";
+      break;
+    case "remote_connected":
+      if (age < 5) {
+        $("#connectStatus").textContent = `Connected ${e.label} as “${e.name}”.`;
+        log(`Connected ${e.label} (${e.name})`);
+        api("/api/settings", { method: "PUT", body: JSON.stringify({ upload: { remote: e.name } }) })
+          .then(s => { settings = s; loadRemotes(); });
+        setTimeout(() => { $("#connectDialog").close(); openFolderBrowser(); }, 1200);  // next: where to upload
+      }
+      break;
+    case "remote_failed":
+      if (age < 5) {
+        const msg = /client|oauth|access_denied|invalid/i.test(e.error) && /drive|googlephotos/.test(e.provider)
+          ? `${e.error}. Google may have refused rclone's shared sign-in: open “Use my own Google client ID” and try again.`
+          : e.error;
+        $("#connectStatus").textContent = "Couldn't connect: " + msg; $("#connectGo").hidden = false;
+        log(`Connecting failed: ${e.error}`, true);
+      }
+      break;
+    case "upload_queued": setCloud(e.file, "queued"); break;
+    case "uploaded": setCloud(e.file, "uploaded", e.dest); if (age < 5) log("Uploaded → " + e.dest); break;
+    case "upload_failed": setCloud(e.file, "failed", e.dest); if (age < 5) log(`Upload failed (${e.dest}): ${e.error}`, true); break;
+    case "job_done": setScanning(false); log(`Done: ${e.count} photo(s)${e.cancelled ? " (stopped)" : ""}`); checkScanner(); break;
+    case "job_failed": setScanning(false); log("Scan failed: " + e.error, true); checkScanner(); break;
+  }
+}
+
+(async () => {
+  settings = await api("/api/settings"); render();
+  pollEvents();
+  await Promise.all([loadRemotes(), loadPhotos(), checkScanner(), loadKey()]);
+})();
+</script>
+</body>
+</html>

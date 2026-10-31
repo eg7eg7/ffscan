@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FF-680W Help</title>
+<style>
+  :root { --bg: #f6f5f2; --panel: #ffffff; --ink: #1f2328; --muted: #6b6f76; --line: #e3e1dc; --accent: #2f6f4f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181b; --panel: #1f2226; --ink: #e8e6e3; --muted: #9aa0a6; --line: #2e3237; --accent: #5fae86; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.6 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 24px 20px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 36px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 20px 0 4px; }
+  a { color: var(--accent); }
+  nav { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 20px 0; }
+  nav ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 24px; }
+  @media (max-width: 560px) { nav ol { columns: 1; } }
+  dl { margin: 8px 0; }
+  dt { font-weight: 600; margin-top: 14px; }
+  dd { margin: 2px 0 0 0; color: var(--ink); }
+  dd .muted, .muted { color: var(--muted); }
+  code { font: 13px ui-monospace, monospace; background: var(--panel); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; }
+  pre code { border: 0; padding: 0; background: none; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .tip { background: var(--panel); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>FF-680W Scanner help</h1><div class="muted">Everything the app does, and what each setting means.</div></div>
+  <a href="/">← Back to the scanner</a>
+</header>
+
+<nav><ol>
+  <li><a href="#start">Scanning, step by step</a></li>
+  <li><a href="#loading">Loading photos</a></li>
+  <li><a href="#save">Where photos are saved</a></li>
+  <li><a href="#scan">Scan settings</a></li>
+  <li><a href="#metadata">Metadata</a></li>
+  <li><a href="#photos">Working with scanned photos</a></li>
+  <li><a href="#cloud">Cloud upload</a></li>
+  <li><a href="#ai">AI analysis</a></li>
+  <li><a href="#scanner">Scanner connection</a></li>
+  <li><a href="#trouble">Troubleshooting</a></li>
+  <li><a href="#files">Files and settings on your Mac</a></li>
+</ol></nav>
+
+<h2 id="start">Scanning, step by step</h2>
+<ol>
+  <li>Check the status at the top says <strong>Ready: photos loaded</strong>. Press <strong>Refresh</strong> after loading photos.</li>
+  <li>Choose where to save under <strong>Save to</strong>, and optionally an <strong>Album</strong> name.</li>
+  <li>Pick your <a href="#scan">scan settings</a> and fill in any <a href="#metadata">metadata</a> for the batch.</li>
+  <li>Press <strong>Scan</strong>. Photos feed one by one and appear in the grid as each one finishes.</li>
+  <li>When the feeder is empty the scan ends by itself, unless <em>Keep scanning as I load more photos</em> is on. Press <strong>Stop</strong> at any time; the photo in progress is ejected and the scan cancelled cleanly.</li>
+</ol>
+<p class="tip">Settings are remembered between sessions. Change them only when a batch needs something different.</p>
+
+<h2 id="loading">Loading photos</h2>
+<ul>
+  <li>Load photos <strong>face up</strong>, top edge first, pushed gently into the feeder until they stop.</li>
+  <li>Up to 36 photos of 4×6″, 3.5×5″ or 5×7″; 10 photos of 8×10″; one Polaroid or panorama at a time.</li>
+  <li>Smallest photo: 2×2″. Widest: 8.5″. Longest: 36″ at 300 or 600 dpi.</li>
+  <li>Stacks can mix sizes. Put the largest at the back.</li>
+  <li>Use the carrier sheet for torn, curled or very thin photos.</li>
+</ul>
+
+<h2 id="save">Where photos are saved</h2>
+<dl>
+  <dt>Save to</dt>
+  <dd>The folder on this Mac where photos go. Type a path or press <strong>Choose…</strong> for a folder picker.
+    Each batch goes into a subfolder named after the <strong>Album</strong>, or today's date (e.g. <code>2026-10-30</code>) if no album is set.</dd>
+  <dt>File names</dt>
+  <dd><code>20261030-185940_001.jpg</code> is the scan time plus the photo's number in the stack.
+    Backs end in <code>_back.jpg</code>, enhanced copies in <code>_enhanced.jpg</code>.</dd>
+</dl>
+
+<h2 id="scan">Scan settings</h2>
+<dl>
+  <dt>Resolution</dt>
+  <dd><strong>300 dpi</strong> is right for most prints. A 4×6″ photo becomes about 1800×1200 pixels, enough for a sharp 4×6″ reprint or any screen.
+    <strong>600 dpi</strong> is the scanner's maximum true detail: use it for small photos you may enlarge, or to crop in later. It's about twice as slow and files are four times bigger.
+    <strong>150 dpi</strong> is for quick previews or email.</dd>
+  <dt>Colour</dt>
+  <dd><strong>Colour</strong> for everything, including faded colour prints. <strong>Greyscale</strong> makes smaller black-and-white files, good for B&W originals.</dd>
+  <dt>Sides</dt>
+  <dd>The scanner reads both sides of every photo in one pass, so this only decides what is saved.
+    <strong>Picture only</strong> saves the image. <strong>Picture and back</strong> also keeps the back, useful for dates and notes written there.
+    <strong>Back only</strong> saves only the backs.</dd>
+  <dt>Skip backs with no writing</dt>
+  <dd>With backs being saved, throws away backs that have nothing written on them. Faint paper-maker watermarks (Kodak, Fuji, DNP) and printed lab codes count as blank. Handwriting, stamps and stickers are kept.</dd>
+  <dt>Crop to photo</dt>
+  <dd>The scanner always captures its full 8.5″ width, so a photo sits on a grey background. This trims the background so the file is just the photo. Turn it off to keep the full scan.</dd>
+  <dt>Straighten (deskew)</dt>
+  <dd>The scanner straightens photos that fed in at a slight angle. The corners it fills in are trimmed by <em>Crop to photo</em>.</dd>
+  <dt>Auto-rotate (photos with faces)</dt>
+  <dd>Uses Apple's face detection to turn photos with people upright, whichever way they went in. Photos without people (landscapes, rooms, pets) are left as scanned. Use the ⟲ ⟳ buttons on those.
+    Rotation only changes an orientation tag in the file, so image quality is untouched. Every photo app respects it.</dd>
+  <dt>Also save an enhanced copy</dt>
+  <dd>Saves a second file (<code>…_enhanced.jpg</code>) with the fixes ticked below it. The original is always kept, so you can compare and delete whichever you don't want.
+    The <strong>Enhance</strong> button on each photo applies the same fixes to photos scanned earlier.
+    <ul>
+      <li><strong>Remove red-eye</strong>: Apple's face detection finds the eyes, and only strongly red pixels inside them are turned neutral. Skin and everything else stay untouched.</li>
+      <li><strong>Restore faded colours</strong>: old prints fade unevenly and drift to a red or magenta cast. Each colour channel is stretched back to full range, which restores contrast and neutral colours together.</li>
+      <li><strong>Auto brightness, contrast &amp; saturation</strong>: measures each photo and nudges it toward a natural look. Dark photos get lighter, flat ones more contrast, dull ones more colour, plus slight sharpening. Photos that already look right change very little.</li>
+    </ul></dd>
+  <dt>Double-feed detection</dt>
+  <dd>Stops the scan when two photos stick together and go through at once, which would otherwise lose one of them.
+    <strong>Normal</strong> suits most prints. <strong>Sensitive</strong> catches more but may stop on thick, curled or stuck-on-backing photos. <strong>Off</strong> never stops; use it for photos that keep stopping a scan for no reason.</dd>
+  <dt>JPEG quality</dt>
+  <dd>How much the files are compressed, from 50 to 100. 90 looks identical to the original for prints. Higher values make bigger files with little visible gain.</dd>
+  <dt>Keep scanning as I load more photos</dt>
+  <dd>When the feeder empties, the app waits and scans the next stack as soon as you load it, so you can work through a box of photos without touching the computer. Press <strong>Stop</strong> when you're done.</dd>
+</dl>
+
+<h2 id="metadata">Metadata</h2>
+<p>Metadata is written <em>into</em> each photo file (EXIF, IPTC and XMP), so it travels with the photo to Apple Photos, Google Photos, Lightroom, a USB stick, or the cloud.</p>
+<dl>
+  <dt>Album</dt><dd>Album name. Also the subfolder name under <em>Save to</em> and in the cloud.</dd>
+  <dt>Date taken</dt><dd>When the photos were taken: <code>1985</code>, <code>1985-07</code> or <code>1985-07-14</code>. Missing month or day becomes 01. Photo apps then sort the scans by when they were taken, not when you scanned them.</dd>
+  <dt>Place</dt><dd>Where they were taken.</dd>
+  <dt>People</dt><dd>Names separated by commas. Stored in the standard "person in image" field so photo apps can search by name.</dd>
+  <dt>Tags</dt><dd>Keywords separated by commas.</dd>
+  <dt>Description</dt><dd>A caption stored with every photo of the batch.</dd>
+</dl>
+<h3>Batch metadata vs. editing later</h3>
+<p>Fields in the side panel are applied to every photo scanned while they are filled in, so clear them before the next batch.
+  To change photos afterwards, click their thumbnails to select them, then press <strong>Edit metadata…</strong>.
+  In that dialog, empty fields are left unchanged, and people and tags are added to the ones already there.</p>
+
+<h2 id="photos">Working with scanned photos</h2>
+<table>
+  <tr><th>Action</th><th>What it does</th></tr>
+  <tr><td>Click a thumbnail</td><td>Select or deselect it. <strong>Select all</strong> toggles every photo.</td></tr>
+  <tr><td>⟲ ⟳</td><td>Rotate 90° left or right (lossless).</td></tr>
+  <tr><td>Enhance</td><td>Save an enhanced copy next to the photo; the original stays.</td></tr>
+  <tr><td>Open</td><td>Show the full-size photo in a new tab.</td></tr>
+  <tr><td>Delete</td><td>Moves the photo to the macOS Trash after a confirmation; put it back from the Trash if needed.</td></tr>
+  <tr><td>Edit metadata…</td><td>Edit metadata of the selected photos.</td></tr>
+  <tr><td>Upload</td><td>Upload the selected photos to the chosen cloud destination now.</td></tr>
+  <tr><td>Cloud badge (top right)</td><td><strong>Uploaded</strong>: in the cloud (hover for where). <strong>Changed</strong>: edited after uploading (rotated, new metadata), so upload again to replace the cloud copy. <strong>Uploading…</strong>, <strong>Failed</strong>, or <strong>Not uploaded</strong>.</td></tr>
+</table>
+<h3>Duplicates</h3>
+<p>The app recognises a print you've already scanned, even at another resolution, crop or orientation, by comparing a visual fingerprint with every photo in the <em>Save to</em> folder. Later scans of the same print get a <strong>Duplicate</strong> badge (hover to see which photo it repeats). The first scan of each print is never marked.</p>
+<ul>
+  <li><strong>Select duplicates</strong> selects every marked photo; check them, then <strong>Delete selected</strong> moves them to the Trash.</li>
+  <li>The <strong>Duplicates</strong> setting under Scan can instead <em>skip</em> saving a print that's already there, or turn the check off.</li>
+  <li>Two different photos of the same scene taken seconds apart can look alike; they were told apart correctly in testing, but review before deleting.</li>
+</ul>
+<h3>Upload progress</h3>
+<p>While photos upload, a progress bar above the photos shows how many are done, which file is uploading, and any failures. Each photo's badge also turns from <em>Uploading…</em> to <em>Uploaded</em>.</p>
+<p>The log under the photos shows what's happening: photos saved, backs skipped, uploads, and errors.</p>
+
+<h2 id="cloud">Cloud upload</h2>
+<p>Connect an account once, then every photo can upload as soon as it's saved. Everything happens in this app; no Terminal needed.</p>
+<h3>Connecting an account</h3>
+<ol>
+  <li>Under <strong>Cloud upload</strong>, press <strong>+ Connect account…</strong> and pick a service.</li>
+  <li><strong>Google Drive, Google Photos, Dropbox, OneDrive:</strong> press <em>Sign in</em>. A sign-in page opens in your browser. Approve access, then come back; the account appears in the list.</li>
+  <li><strong>Amazon S3</strong> (or S3-compatible such as Backblaze B2, Wasabi, Cloudflare R2): enter the access key, secret key and region (plus the endpoint for non-AWS services), then press <em>Connect</em>.</li>
+</ol>
+<p class="tip">Google Drive asks only for access to files this app creates, so it can't see or change anything else in your Drive.</p>
+<dl>
+  <dt>Accounts</dt><dd>Connected accounts. Choose the one that receives uploads with its round button. <strong>Test</strong> checks the connection; <strong>Remove</strong> disconnects it (photos already uploaded stay in the cloud).</dd>
+  <dt>Upload each photo automatically</dt><dd>Uploads every saved photo, including enhanced copies, as soon as it's ready, after AI analysis if that's on. Failed uploads are retried 3 times; failures show in red in the log. You can also select photos and press <strong>Upload</strong>.</dd>
+  <dt>Folder in the cloud</dt><dd>Top folder in that account. Press <strong>Browse…</strong> to pick a folder or create a new one. The browser also opens right after you connect an account. Photos land in <code>&lt;folder&gt;/&lt;album or date&gt;/</code>. For Amazon S3, start with the bucket: <code>my-bucket/FastFoto</code>. Google Photos ignores this: each album becomes a Google Photos album.</dd>
+</dl>
+<h3>If Google refuses the sign-in</h3>
+<p>The sign-in for Google Drive and Google Photos uses a shared app ID from rclone, the upload tool inside this app, which Google is retiring during 2026. If Google shows an error instead of the consent screen:</p>
+<ol>
+  <li>In the Google Cloud console open <em>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</em>, type <em>Desktop app</em>. Enable the <em>Google Drive API</em> (or <em>Photos Library API</em>) for the project.</li>
+  <li>In <strong>Connect account → Google Drive</strong>, open <em>Use my own Google client ID</em>, paste the client ID and secret, and sign in again.</li>
+</ol>
+
+<h2 id="ai">AI analysis (Claude)</h2>
+<p>When <strong>Analyse photos with Claude</strong> is on, every scanned picture is sent to Claude, Anthropic's AI model. This happens in the background while scanning continues. Claude:</p>
+<ul>
+  <li><strong>Turns the photo upright</strong>, including landscapes, rooms and other photos without faces. Photos with faces keep the on-device face-based rotation, which is exact.</li>
+  <li>Writes a <strong>caption</strong> and <strong>tags</strong>. It never guesses people's names.</li>
+  <li><strong>Estimates when</strong> the photo was taken from clothes, cars, print style and colour. A year goes into the date field; a decade becomes a tag like <code>c. 1980s</code>.</li>
+  <li><strong>Guesses the place</strong> when it's recognisable.</li>
+  <li><strong>Reads the back</strong>: handwriting, stamps and dates, even when you don't save backs. A date written on the back wins over its estimate.</li>
+</ul>
+<p>It only fills <em>empty</em> fields. Anything you typed in the batch metadata is kept. To analyse photos scanned earlier, select them and press <strong>Analyse</strong>.</p>
+<h3>One-time setup: Anthropic API (default)</h3>
+<ol>
+  <li>Create an API key at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> → API Keys. Usage is billed to that account.</li>
+  <li>Paste it under <strong>AI analysis → API key</strong> and press <strong>Save</strong>. The app checks the key with Anthropic and stores it in this Mac's Keychain, never in a file. <strong>Remove</strong> deletes it again.</li>
+  <li>Tick <strong>Analyse photos with Claude</strong>.</li>
+</ol>
+<h3>Alternative: Google Vertex AI</h3>
+<ol>
+  <li><code>gcloud auth application-default login</code> in Terminal.</li>
+  <li>In the Google Cloud console, open <em>Vertex AI → Model Garden</em>, find <em>Claude Opus 5.5</em> and press <strong>Enable</strong>. New projects also need a quota increase (IAM &amp; Admin → Quotas, filter <code>anthropic-claude-opus</code>).</li>
+  <li>Choose <strong>Service → Google Vertex AI</strong> and enter your project ID.</li>
+</ol>
+<p class="tip">Privacy: photos leave your Mac only while this option is on, and only go to the service you chose.</p>
+
+<h2 id="scanner">Scanner connection</h2>
+<dl>
+  <dt>Address</dt>
+  <dd>Leave it empty and the app finds the scanner on your network automatically. If that fails, type the scanner's network name (e.g. <code>EPSONXXXXXX.local</code>) or its IP address.
+    Hold the scanner's Wi-Fi button to print or show its network status, or check your router's device list.</dd>
+  <dt>Status line</dt>
+  <dd>Shows whether the scanner is ready, scanning, out of photos or jammed. Press <strong>Refresh</strong> to check again.
+    Model, serial number and firmware appear under <em>Address</em> once connected.</dd>
+</dl>
+<p class="tip">Only one app can use the scanner at a time. Quit Epson FastFoto, Epson ScanSmart and Epson Scan 2 while using this app.</p>
+
+<h2 id="trouble">Troubleshooting</h2>
+<table>
+  <tr><th>Message or problem</th><th>What to do</th></tr>
+  <tr><td>Cannot reach scanner</td><td>Check the scanner is on and its Wi-Fi light is steady. Try its IP address under <em>Scanner → Address</em>. Wait a few seconds after waking it from sleep, then Refresh.</td></tr>
+  <tr><td>Feeder is empty</td><td>Push the photos in until they stop, face up. Then Refresh.</td></tr>
+  <tr><td>Paper jam</td><td>Open the scanner cover, remove the photo, close the cover, then scan again. Photos already saved are kept.</td></tr>
+  <tr><td>Scanner refused lock</td><td>Another program is using the scanner: quit Epson's software and try again.</td></tr>
+  <tr><td>Scan stops on a photo that isn't doubled</td><td>Set <em>Double-feed detection</em> to Off for that photo, or press the scanner's double-feed skip button.</td></tr>
+  <tr><td>Grey border left around a photo</td><td>Very dark or grey-edged photos can confuse cropping. Untouched originals of the last 300 scans are kept in <code>~/Library/Caches/FF680W/raw</code>.</td></tr>
+  <tr><td>Photo is sideways or upside down</td><td>Use ⟲ ⟳. Auto-rotate only works on photos with faces.</td></tr>
+  <tr><td>Uploads fail</td><td>Run <code>rclone lsd &lt;remote&gt;:</code> in Terminal to check the account still works. Google Drive may need <code>rclone config reconnect &lt;remote&gt;:</code>.</td></tr>
+</table>
+
+<h2 id="files">Files and settings on your Mac</h2>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Your settings</td><td><code>~/Library/Application Support/FF680W/settings.json</code>. Delete it to reset everything.</td></tr>
+  <tr><td>Untouched recent scans</td><td><code>~/Library/Caches/FF680W/raw</code>, the last 300 sides. macOS may clear these.</td></tr>
+  <tr><td>Cloud accounts</td><td><code>~/.config/rclone/rclone.conf</code></td></tr>
+  <tr><td>Starting the app</td><td><code>./run.sh</code> in the project folder, then open <a href="/">http://localhost:8680</a></td></tr>
+</table>
+</div>
+</body>
+</html>
