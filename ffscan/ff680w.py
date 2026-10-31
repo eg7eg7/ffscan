@@ -108,9 +108,12 @@ def find_photo_box(bmp, threshold=40):
     not pure-white deskew fill.
     """
     w, h, px = _bmp_pixels(bmp)
-    bg = _background(bmp)
+    bg = _background(bmp)[::-1]  # BMP pixels are blue-green-red
+    tint = max(bg) - min(bg)
+
     def is_fg(p):  # pure white (>= 250) is the scanner's deskew corner fill; photo paper measures <= 246
-        return sum(abs(a - b) for a, b in zip(p, bg)) > threshold and min(p) < 250
+        # differs from the backing, or clearly more colourful than it (pale sky is as bright as the grey backing)
+        return (sum(abs(a - b) for a, b in zip(p, bg)) > threshold or max(p) - min(p) > tint + 12) and min(p) < 250
 
     fg = [[is_fg(px(x, y)) for x in range(w)] for y in range(h)]
     # rows first, then columns counted only inside those rows (and refine rows inside the columns):
@@ -126,96 +129,169 @@ def find_photo_box(bmp, threshold=40):
 
 
 def _background(bmp):
-    """Median colour of the scanner backing, sampled 1.5-3% in from the left and right edges: the outermost
-    columns of 300 dpi scans are a different colour than the backing, and even an 8" photo leaves this clear."""
+    """Median colour (R, G, B) of the scanner backing, sampled 1.5-3% in from the left and right edges: the
+    outermost columns of 300 dpi scans are a different colour than the backing, and even an 8" photo leaves this
+    clear."""
     w, h, px = _bmp_pixels(bmp)
     band = range(int(w * 0.015), max(int(w * 0.03), int(w * 0.015) + 1))
     edge = [px(x, y) for y in range(h) for x in [*band, *(w - 1 - x for x in band)]]
-    return [sorted(p[c] for p in edge)[len(edge) // 2] for c in range(3)]
+    return [sorted(p[c] for p in edge)[len(edge) // 2] for c in range(3)][::-1]  # BMP pixels are B, G, R
 
 
-def skew_angle(im, bg, threshold=40, size=1500):
-    """Degrees to rotate `im` (Pillow, counter-clockwise positive) so the photo's edges are straight, or 0.
+def photo_quad(im, bmp, bg, threshold=40, size=3000):
+    """Corners of the print (upper-left, lower-left, lower-right, upper-right) in `im` pixels, or None.
 
-    Each edge of the photo that doesn't touch the image border is traced in thin strips of a foreground mask
-    (differs from the backing like find_photo_box, specks eroded); its slope is the median over pairs of
-    points half the edge apart, so a stretch of sky the colour of the backing doesn't skew it.
+    Each edge is fitted as its own line, so a print that is tilted, not cut quite square, or turned slightly
+    while feeding still gets every edge exactly. Each edge is traced along short lines walked from the backing
+    inward: skip the backing (as in find_photo_box), then the print's shadow, a colourless grey a little darker
+    than the backing (75-90% of its brightness, up to ~40 px at 600 dpi); the edge is the first run of 3 picture
+    pixels. A grey run longer than any shadow is picture (a grey wall at the photo's edge), so the edge is where
+    it starts. The line is a Theil-Sen fit (median slope over pairs half the edge apart, median intercept), so
+    a stretch of sky the colour of the backing doesn't bend it. Where the scan cut the print off, the edge is
+    extrapolated from the part that was scanned.
     """
-    from PIL import Image, ImageChops, ImageFilter
+    from PIL import Image
 
     small = im.convert("RGB")
     small.thumbnail((size, size))
-    r, g, b = ImageChops.difference(small, Image.new("RGB", small.size, tuple(bg))).split()
-    differs = ImageChops.add(ImageChops.add(r, g), b).point(lambda v: 255 if v > threshold else 0)
-    not_fill = ImageChops.darker(ImageChops.darker(*small.split()[:2]), small.split()[2]).point(lambda v: 255 if v < 250 else 0)
-    mask = ImageChops.multiply(differs, not_fill).filter(ImageFilter.MinFilter(5))
-    box = mask.getbbox()
-    if not box:
-        return 0.0
-    w, h = mask.size
-    x0, y0, x1, y1 = box
-    slopes = []
-    for vertical in (True, False):  # left/right edges: x along y; top/bottom edges: y along x
-        lo, hi = (y0, y1) if vertical else (x0, x1)
-        steps = range(int(lo + 0.15 * (hi - lo)), int(hi - 0.15 * (hi - lo)), 4)
-        near, far = [], []
-        for t in steps:
-            strip = mask.crop((0, t, w, t + 4) if vertical else (t, 0, t + 4, h)).getbbox()
-            if strip:
-                a, b_ = (strip[0], strip[2]) if vertical else (strip[1], strip[3])
-                near.append((t, a))
-                far.append((t, b_))
+    w, h = small.size
+    luma = sum(bg) / 3
+    max_shadow = int(0.012 * max(w, h))
+
+    tint = max(bg) - min(bg)
+
+    def kind(p):
+        if min(p) >= 250 or (sum(abs(a - b) for a, b in zip(p, bg)) <= threshold and max(p) - min(p) <= tint + 12):
+            return "b"  # deskew fill, or the backing (pale sky is as bright, but clearly more colourful)
+        if max(p) - min(p) < 14 and 0.65 * luma < sum(p) / 3 < luma + 10:
+            return "s"
+        return "p"
+
+    def edge_at(line):
+        """Index of the print's edge along `line` (pixels from outside inward), or None."""
+        cls = "".join(map(kind, line))
+        i = len(cls) - len(cls.lstrip("b"))
+        j = i + len(cls[i:]) - len(cls[i:].lstrip("s"))
+        if j - i > max_shadow:
+            return i
+        k = cls.find("ppp", i)
+        return None if k < 0 else k
+
+    tw = struct.unpack_from("<i", bmp, 18)[0]
+    bx0, by0, bx1, by1 = (v * w / tw for v in find_photo_box(bmp))  # coarse box, working pixels
+    pad = 0.03 * max(w, h)
+    inside_tol = 0.015 * max(w, h)  # a shadow is ~1%: an edge further inside the coarse box than this is picture
+
+    def edge(vertical, far):
+        """Line c = a*t + b along the edge (vertical: x along y, else y along x)."""
+        lo, hi = (by0, by1) if vertical else (bx0, bx1)
+        c0 = (bx1 if far else bx0) if vertical else (by1 if far else by0)
         limit = w if vertical else h
-        for pts in (near, far):
-            if len(pts) < 10 or min(p for _, p in pts) <= 2 or max(p for _, p in pts) >= limit - 2:
-                continue  # edge touches the image border (cut off by the scan): can't trace it
-            half = len(pts) // 2
-            pair = sorted((pts[i + half][1] - pts[i][1]) / (pts[i + half][0] - pts[i][0]) for i in range(half))
-            s = pair[len(pair) // 2]
-            slopes.append(-s if vertical else s)  # x drifting right going down = clockwise tilt
-    if not slopes:
-        return 0.0
-    slopes.sort()
-    angle = math.degrees(math.atan(slopes[len(slopes) // 2]))
-    return angle if 0.1 <= abs(angle) <= 5 else 0.0  # below 0.1 deg: under a pixel per 600; above 5: not skew
+        outer = int(min(limit, c0 + pad)) if far else int(max(0, c0 - pad))
+        inner = int(max(0, c0 - pad)) if far else int(min(limit, c0 + pad))
+        a_, b_ = sorted((outer, inner))
+        span, pts = hi - lo, []
+        steps = range(int(lo + 0.15 * span), int(hi - 0.15 * span), 3)
+        for t in steps:
+            strip = small.crop((a_, t, b_, t + 3) if vertical else (t, a_, t + 3, b_))
+            line = list(strip.resize((b_ - a_, 1) if vertical else (1, b_ - a_), Image.BOX).getdata())
+            if far:
+                line.reverse()
+            i = edge_at(line)
+            if i is None or i <= 2:  # i <= 2: the print runs past the scan's edge here
+                continue
+            c = outer - i if far else outer + i
+            # far inside the coarse box: picture that looks like backing (pale sky, snow), which the coarse box
+            # (whole columns/rows) already counted as photo
+            if (c0 - c if far else c - c0) <= inside_tol:
+                pts.append((t, c))
+        if len(pts) < 10:  # cut off along its whole length (or nothing traceable): the coarse box edge
+            return None, c0, pts
+        half = len(pts) // 2
+        slopes = sorted((pts[i + half][1] - pts[i][1]) / (pts[i + half][0] - pts[i][0]) for i in range(half))
+        # an edge mostly cut off by the scan has only a few points near a corner: too few for its own slope
+        return (slopes[len(slopes) // 2] if len(pts) >= 0.4 * len(steps) else None), c0, pts
+
+    edges = [edge(True, False), edge(True, True), edge(False, False), edge(False, True)]  # left right top bottom
+    # prints are near-rectangles: a rotation turns vertical edges by `tilt` (x per y) and horizontal ones by -tilt.
+    # An edge without its own slope, or one far from the others (> 0.02, ~1 deg), takes the shared tilt instead;
+    # smaller differences are kept (a print that turned while feeding, or wasn't cut square).
+    own = sorted(a if i < 2 else -a for i, (a, _, _) in enumerate(edges) if a is not None)
+    if not own:
+        return None
+    tilt = own[len(own) // 2]
+    fitted = []
+    for i, (a, c0, pts) in enumerate(edges):
+        expected = tilt if i < 2 else -tilt
+        if a is None or abs(a - expected) > 0.02:
+            a = expected
+        icepts = sorted(c - a * t for t, c in pts) or [c0]
+        fitted.append((a, icepts[len(icepts) // 2]))
+    left, right, top, bottom = fitted
+
+    def corner(v, hz):  # x = a*y + b meets y = c*x + d
+        (a, b_), (c, d) = v, hz
+        x = (a * d + b_) / (1 - a * c)
+        return x, c * x + d
+
+    k = im.width / w
+    corners = [corner(left, top), corner(left, bottom), corner(right, bottom), corner(right, top)]
+    coarse = [(bx0, by0), (bx0, by1), (bx1, by1), (bx1, by0)]
+    if any(abs(x - cx) > pad or abs(y - cy) > pad for (x, y), (cx, cy) in zip(corners, coarse)):
+        return None  # a fit went wrong: fall back to the coarse box
+    return [(x * k, y * k) for x, y in corners]
 
 
-def trim_backing(im, box, bg, step=4, max_share=0.03):
-    """Move each side of `box` inward past lines that are flat grey: the backing, or the shadow along the
-    print's edge (measured: std <= 5, near-neutral, no brighter than the backing; picture lines vary 30-70).
-    A white print border is brighter than the backing and stays. At most 3% per side."""
+def trim_backing(im, box, bg, step=4, max_share=0.03, edge_share=0.006):
+    """Move each side of `box` inward past lines that are flat: the backing or the shadow along the print's
+    edge (measured: std <= 5, near-neutral, 75-100% of the backing's brightness; picture lines vary 30-70), at most
+    3% per side; or a thin flat bright line, the paper showing at the print's cut edge, at most 0.6% (a real
+    white print border is wider and stays)."""
     from PIL import ImageStat
 
     luma = sum(bg) / 3
 
-    def flat(strip):
+    def kind(strip):
         st = ImageStat.Stat(im.crop(strip).convert("RGB"))
-        return sum(st.stddev) / 3 < 8 and max(st.mean) - min(st.mean) < 15 and sum(st.mean) / 3 < luma + 25
+        mean = sum(st.mean) / 3
+        if sum(st.stddev) / 3 >= 8 or max(st.mean) - min(st.mean) >= 15 or mean < 0.65 * luma:
+            return None  # picture (a flat dark area of the photo is darker than any shadow)
+        return "backing" if mean < luma + 25 else "paper"
 
     x0, y0, x1, y1 = box
-    mx, my = int((x1 - x0) * max_share), int((y1 - y0) * max_share)
     iy0, iy1, ix0, ix1 = y0 + (y1 - y0) // 10, y1 - (y1 - y0) // 10, x0 + (x1 - x0) // 10, x1 - (x1 - x0) // 10
-    while x0 < box[0] + mx and flat((x0, iy0, x0 + step, iy1)):
-        x0 += step
-    while x1 > box[2] - mx and flat((x1 - step, iy0, x1, iy1)):
-        x1 -= step
-    while y0 < box[1] + my and flat((ix0, y0, ix1, y0 + step)):
-        y0 += step
-    while y1 > box[3] - my and flat((ix0, y1 - step, ix1, y1)):
-        y1 -= step
+
+    def trim(pos, inward, line, size):
+        start, limit = pos, {"backing": size * max_share, "paper": size * edge_share}
+        while (k := kind(line(pos))) and abs(pos - start) < limit[k]:
+            pos += inward * step
+        return pos
+
+    x0 = trim(x0, 1, lambda p: (p, iy0, p + step, iy1), x1 - x0)
+    x1 = trim(x1, -1, lambda p: (p - step, iy0, p, iy1), x1 - x0)
+    y0 = trim(y0, 1, lambda p: (ix0, p, ix1, p + step), y1 - y0)
+    y1 = trim(y1, -1, lambda p: (ix0, p - step, ix1, p), y1 - y0)
     return x0, y0, x1, y1
 
 
 def inside(valid, box, step=2):
-    """Shrink `box` until its every edge line lies on pixels where the `valid` mask is 255."""
+    """Shrink `box` until its every edge line lies on pixels where the `valid` mask is 255. The side with the
+    most invalid pixels moves first: a wedge along the top shouldn't also eat into the left side."""
     x0, y0, x1, y1 = box
-    bad = lambda b: valid.crop(b).getextrema()[0] < 255
+    bad = lambda b: valid.crop(b).histogram()[0]
     while x1 - x0 > 2 * step and y1 - y0 > 2 * step:
         sides = [bad((x0, y0, x0 + 1, y1)), bad((x1 - 1, y0, x1, y1)), bad((x0, y0, x1, y0 + 1)), bad((x0, y1 - 1, x1, y1))]
-        if not any(sides):
+        worst = max(range(4), key=sides.__getitem__)
+        if not sides[worst]:
             break
-        x0, x1 = x0 + step * sides[0], x1 - step * sides[1]
-        y0, y1 = y0 + step * sides[2], y1 - step * sides[3]
+        if worst == 0:
+            x0 += step
+        elif worst == 1:
+            x1 -= step
+        elif worst == 2:
+            y0 += step
+        else:
+            y1 -= step
     return x0, y0, x1, y1
 
 
@@ -274,29 +350,36 @@ def ink_fraction(bmp, threshold=90, border=0.04):
     return sum(sum(abs(a - b) for a, b in zip(p, paper)) > threshold for p in pixels) / max(1, len(pixels))
 
 
-def autocrop(path, margin=2):
+def autocrop(path, margin=0.004):
     """Crop a saved scan to the photo, in place; returns (width, height).
 
-    Re-encodes once at JPEG quality 95 and keeps EXIF, XMP, ICC profile and DPI.
+    The print's four corners are found and mapped onto an upright rectangle, which straightens a tilted print
+    and squares one that wasn't cut quite square. `margin` (share of the size) drops the soft edge. Re-encodes
+    once at JPEG quality 95 and keeps EXIF, XMP, ICC profile and DPI.
     """
+    import math
+
     from PIL import Image
 
     im = Image.open(path)
     keep = {k: im.info[k] for k in ("exif", "xmp", "icc_profile", "dpi") if im.info.get(k)}
     bmp = _thumbnail(im)
-    # straighten first: a print that went through at a slight angle otherwise leaves wedges of backing
-    angle, scanned = skew_angle(im, bg := _background(bmp)), None
-    if angle:
-        scanned = Image.new("L", im.size, 255).rotate(angle, expand=True)  # 0 where rotation filled the corners
-        im = im.convert("RGB").rotate(angle, Image.BICUBIC, expand=True, fillcolor=tuple(bg))
-        bmp = _thumbnail(im)
-    thumb_w = struct.unpack_from("<i", bmp, 18)[0]
-    scale = im.width / thumb_w
-    # shrink by margin (thumbnail px) to drop the soft edge, then scale to full resolution
-    bx0, by0, bx1, by1 = find_photo_box(bmp)
-    box = tuple(int(v * scale) for v in (bx0 + margin, by0 + margin, bx1 - margin, by1 - margin))
-    box = trim_backing(im, box, bg)
-    if scanned:  # a print cut off by the scan's edge: keep the rotated fill wedges out of the crop
+    bg = _background(bmp)
+    quad = photo_quad(im, bmp, bg)
+    if quad:
+        ul, ll, lr, ur = quad
+        w = round((math.dist(ul, ur) + math.dist(ll, lr)) / 2)
+        h = round((math.dist(ul, ll) + math.dist(ur, lr)) / 2)
+        data = [*ul, *ll, *lr, *ur]
+        scanned = Image.new("L", im.size, 255).transform((w, h), Image.QUAD, data)  # 0 past the scan's edge
+        im = im.convert("RGB").transform((w, h), Image.QUAD, data, Image.BICUBIC)
+        box = (0, 0, w, h)
+    else:
+        scale = im.width / struct.unpack_from("<i", bmp, 18)[0]
+        box, scanned = tuple(int(v * scale) for v in find_photo_box(bmp)), None
+    m = round(margin * max(box[2] - box[0], box[3] - box[1]))
+    box = trim_backing(im, (box[0] + m, box[1] + m, box[2] - m, box[3] - m), bg)
+    if scanned:  # a print the scan cut off at one corner: keep what lies past the scan's edge out
         box = inside(scanned, box)
     im.crop(box).save(path, "JPEG", quality=95, **keep)
     return box[2] - box[0], box[3] - box[1]

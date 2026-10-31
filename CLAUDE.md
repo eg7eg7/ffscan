@@ -86,9 +86,13 @@ Order matters:
 - Sample the crop background 1.5–3% in from the edges: the outermost columns of 300 dpi scans differ.
 - Pure-white pixels (≥ 250) are deskew corner fill, not photo.
 - Find rows first, then count columns only within them: back-side scans have a full-width band past the paper.
-- Prints still come through tilted (up to ~1°) with hardware `SKEW` on, and cast a flat grey shadow ~40 px wide
-  along one edge. `autocrop` straightens first (`skew_angle`), trims flat grey lines (`trim_backing`), and keeps
-  rotation fill out when the print was cut off by the scan's edge (`inside`).
+- Prints come through tilted (~0.5–1°) even with hardware `SKEW`, often turn a little while feeding (edges
+  not square to each other), and cast a colourless grey shadow up to ~40 px wide along an edge; the white paper
+  core shows as a thin line at the cut edge. `autocrop` fits each edge as its own line (`photo_quad`) and maps the
+  four corners onto a rectangle, then `trim_backing` and `inside`. Re-check on cached raws (last 300 sides in
+  `~/Library/Caches/FF680W/raw`) before changing any of it.
+- `_bmp_pixels` returns blue-green-red bytes; `_background` returns R, G, B. The backing is a cool grey, so mixing
+  the two orders silently breaks crop.
 
 ## Prefer on-device methods over AI
 

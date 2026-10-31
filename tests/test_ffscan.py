@@ -75,7 +75,7 @@ from PIL import Image
 import tempfile
 
 # skewed print with a shadow along one edge: straightened, and no backing grey left in the crop
-from ffscan.ff680w import autocrop, skew_angle
+from ffscan.ff680w import autocrop
 
 with tempfile.TemporaryDirectory() as tmp:
     photo = Image.new("RGB", (1235, 800), (120, 118, 114))  # 35 px shadow along the right edge
@@ -84,7 +84,6 @@ with tempfile.TemporaryDirectory() as tmp:
     scan = Image.new("RGB", (1800, 1100), GREY)
     tilted = photo.rotate(1.0, Image.BICUBIC, expand=True)
     scan.paste(tilted, (250, 140), Image.new("L", photo.size, 255).rotate(1.0, expand=True))
-    assert abs(skew_angle(scan, GREY) + 1.0) < 0.15, skew_angle(scan, GREY)
     scan.save(Path(tmp) / "s.jpg", quality=95)
     w, h = autocrop(str(Path(tmp) / "s.jpg"))
     assert 1140 < w <= 1200 and 760 < h <= 800, (w, h)
@@ -92,6 +91,19 @@ with tempfile.TemporaryDirectory() as tmp:
     for x, y in ((3, 3), (w - 4, 3), (3, h - 4), (w - 4, h - 4), (w - 4, h // 2)):
         r, g, b = out.getpixel((x, y))
         assert r - b > 40, ((x, y), (r, g, b))  # photo red, not neutral backing or shadow
+
+# cool-grey backing (not symmetric in R/B: catches BMP's blue-green-red order) and pale sky at the photo's edge,
+# about as bright as the backing but clearly blue: the sky is photo, the crop keeps it
+with tempfile.TemporaryDirectory() as tmp:
+    COOL, SKY = (164, 172, 177), (150, 178, 190)  # sky: within 40 of the backing, but chroma 40 vs 13
+    photo = Image.new("RGB", (1200, 800), SKY)
+    for i in range(300, 1200, 40):
+        photo.paste((150 + i % 80, 60, 40), (i, 0, i + 40, 800))  # picture right of a 300 px band of sky
+    scan = Image.new("RGB", (1800, 1100), COOL)
+    scan.paste(photo, (300, 150))
+    scan.save(Path(tmp) / "sky.jpg", quality=95)
+    w, h = autocrop(str(Path(tmp) / "sky.jpg"))
+    assert 1170 < w <= 1200 and 770 < h <= 800, (w, h)
 
 from ffscan.enhance import remove_red_eye
 
