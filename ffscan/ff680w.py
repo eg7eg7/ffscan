@@ -22,13 +22,14 @@ Page = namedtuple("Page", "index side width height jpeg")  # side "A" = paper ba
 
 
 def _recv_exact(s, n):
-    buf = b""
-    while len(buf) < n:
-        chunk = s.recv(n - len(buf))
-        if not chunk:
-            raise ConnectionError(f"scanner closed connection after {len(buf)}/{n} bytes")
-        buf += chunk
-    return buf
+    buf, got = bytearray(n), 0  # preallocated: image blocks can be large
+    view = memoryview(buf)
+    while got < n:
+        k = s.recv_into(view[got:], n - got)
+        if not k:
+            raise ConnectionError(f"scanner closed connection after {got}/{n} bytes")
+        got += k
+    return bytes(buf)
 
 
 def _send_packet(s, ptype, payload=b""):
@@ -290,6 +291,7 @@ def _scan_subnet():
 
 class FF680W:
     LOCK = bytes([0x01, 0xA0, 0x04, 0x00, 0x00, 0x01, 0x2C])  # as sent by Epson's client
+    BLOCK_SIZE = 1 << 20  # requested image block size (#BSZ) and read-ahead per IMG request: 1 MiB
 
     def __init__(self, host=None, port=1865, timeout=60, verbose=False):
         self.host, self.port, self.timeout, self.verbose = host, port, timeout, verbose
@@ -334,13 +336,22 @@ class FF680W:
             raise ScannerError(f"unexpected packet type 0x{ptype:04x}")
         return payload
 
-    def command(self, cmd, params=b""):
-        """Send a 4-char command (+param block); return (64-byte reply header, body)."""
-        hdr = self._xfer(cmd.encode() + b"x%07X" % len(params) + params, 64)
+    def command(self, cmd, params=b"", read_ahead=0):
+        """Send a 4-char command (+param block); return (64-byte reply header, body).
+
+        read_ahead > 0 lets the scanner return up to that many body bytes together with the header, saving a
+        network round trip per image block (each round trip is tens of ms on Wi-Fi). If the scanner only sends
+        the header, the body is pulled separately as before.
+        """
+        reply = self._xfer(cmd.encode() + b"x%07X" % len(params) + params, 64 + read_ahead)
+        hdr = reply[:64]
         body_len = int(hdr[5:12], 16)
-        body = b""
-        while len(body) < body_len:
-            body += self._xfer(b"", body_len - len(body))
+        parts, got = [reply[64:64 + body_len]], len(reply[64:64 + body_len])
+        while got < body_len:
+            chunk = self._xfer(b"", body_len - got)
+            parts.append(chunk)
+            got += len(chunk)
+        body = b"".join(parts)
         if self.verbose:
             print(f"{cmd}: {hdr!r} body[{body_len}]")
         return hdr, body
@@ -376,7 +387,11 @@ class FF680W:
             f"#ADF{adf}#COL{color}#FMTJPG #JPGd{jpeg_quality:03d}#GMM{gamma}"
             f"#RSMi{dpi:07d}#RSSi{dpi:07d}#ACQi0000000i0000000i{width:07d}i{length:07d}"
         ).encode()
-        hdr, _ = self.command("PARA", params)
+        # larger image blocks mean fewer round trips; older firmware may not know #BSZ, so fall back without it
+        hdr, _ = self.command("PARA", params + b"#BSZi%07d" % self.BLOCK_SIZE)
+        self.block_size_accepted = b"#parOK" in hdr
+        if not self.block_size_accepted:
+            hdr, _ = self.command("PARA", params)
         if b"#parOK" not in hdr:
             raise ScannerError(f"settings rejected: {parse_tokens(hdr[12:])}")
 
@@ -384,17 +399,17 @@ class FF680W:
         index, parts, last = 0, {}, time.monotonic()
         try:
             while True:
-                hdr, block = self.command("IMG ")
+                hdr, block = self.command("IMG ", read_ahead=self.BLOCK_SIZE)
                 if hdr[:4] == b"INVD":
                     return  # transfer finished
                 t = tokens_to_dict(parse_tokens(hdr[12:]))
                 side = "B" if ["IMGB"] in t.get("typ", []) else "A"
-                parts[side] = parts.get(side, b"") + block
+                parts.setdefault(side, []).append(block)
                 if "err" in t:
                     raise ScannerError(f"scan error: {t['err']}")
                 if "pen" in t:
                     w, h = t["pen"][0]
-                    yield Page(index, side, w, h, fix_jpeg_height(parts.pop(side), h))
+                    yield Page(index, side, w, h, fix_jpeg_height(b"".join(parts.pop(side)), h))
                     if side == "B" or not duplex:
                         index += 1
                     if t.get("lft") == [[0]] and not parts:
@@ -404,7 +419,7 @@ class FF680W:
                 elif time.monotonic() - last > poll_timeout:
                     raise ScannerError(f"no data for {poll_timeout}s")
                 else:
-                    time.sleep(0.2)  # photo still feeding
+                    time.sleep(0.05)  # photo still feeding
         except BaseException:
             self.command("CAN ")
             raise

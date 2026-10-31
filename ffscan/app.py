@@ -216,6 +216,8 @@ def queue_upload(path, s):
 def upload_worker():
     while True:
         path, remote, base, rel = uploads.get()
+        while job["thread"] and job["thread"].is_alive():  # don't share the Wi-Fi with a scan in progress
+            time.sleep(1)
         dest = cloud.destination(remote.rstrip(":"), base, rel)
         upload_stats["current"] = os.path.basename(path)
         for attempt in range(3):
@@ -420,7 +422,7 @@ def ai_worker():
         except Exception as e:  # keep the queue alive; the photo is already saved without AI metadata
             msg = str(e)
             if "credit balance is too low" in msg:
-                msg = "the Anthropic account has no API credit: add some at console.anthropic.com → Plans & Billing"
+                msg = "the Anthropic account has no API credit: top it up at https://platform.claude.com/dashboard"
             emit("ai_failed", file=str(path), error=msg[:300])
         queue_uploads(files, s)
 
@@ -461,6 +463,7 @@ def scan_job(s):
                     prefix = file_prefix(s, time.strftime("%Y%m%d-%H%M%S"))
                     offset = next_number(batch_dir, prefix)
                     emit("stack_started")
+                    side_started = time.monotonic()
                     pages = sc.scan(dpi=s["dpi"], color=s["color"], duplex=s["sides"] != "back",  # picture = side B, needs duplex
                                     deskew=s["deskew"], double_feed=s["double_feed"] or None, jpeg_quality=s["quality"])
                     for page in pages:
@@ -468,10 +471,13 @@ def scan_job(s):
                             pages.close()  # sends CAN to the scanner
                             break
                         raw, name = save_raw(page, prefix, offset)  # fast: the scanner keeps feeding
+                        now = time.monotonic()
+                        mb, secs, side_started = len(page.jpeg) / 1e6, now - side_started, now
                         with progress_lock:
                             stats["scanned"] += 1
                         process_jobs.put(((page._replace(jpeg=b""), raw, name, s, out_dir, backs), stats))
-                        emit("scanned", scanned=stats["scanned"], processed=stats["processed"])
+                        emit("scanned", scanned=stats["scanned"], processed=stats["processed"], side=page.side,
+                             mb=round(mb, 2), secs=round(secs, 2), block_size=sc.block_size_accepted)
                 elif not s["watch"]:
                     raise ff680w.ScannerError(describe_error(err))
                 elif err != waiting:
@@ -726,6 +732,41 @@ def save_ai_key(body: dict):
     if r.returncode != 0:
         raise HTTPException(500, "couldn't save the key in the Keychain")
     return {"present": True, "persisted": True}
+
+
+@app.post("/api/ai/test")
+def test_ai():
+    """One tiny real request to the selected service, so problems show up before a batch is scanned."""
+    import anthropic
+
+    from . import photo_ai
+
+    ai = load_settings()["ai"]
+    problem = ai_setup_problem(ai)
+    if problem:
+        return {"ok": False, "message": problem}
+    try:
+        r = photo_ai.client(ai["provider"], ai["project"], ai["region"]).messages.create(
+            model=ai["model"], max_tokens=64, output_config={"effort": "low"},
+            messages=[{"role": "user", "content": "Reply with the single word OK."}])
+        service = "Google Vertex AI" if ai["provider"] == "vertex" else "the Anthropic API"
+        return {"ok": True, "message": f"Works: {r.model} answered through {service}."}
+    except anthropic.AuthenticationError:
+        return {"ok": False, "message": "The API key was rejected. Create a new one at https://platform.claude.com/dashboard"}
+    except anthropic.PermissionDeniedError as e:
+        return {"ok": False, "message": f"This key or project may not use {ai['model']}: {e.message}"}
+    except anthropic.RateLimitError as e:
+        quota = "quota" in str(e).lower()
+        return {"ok": False, "message": "No quota for Claude in this Google Cloud project yet: request it under IAM & Admin → Quotas."
+                if quota else "Rate limited right now; try again in a minute."}
+    except anthropic.BadRequestError as e:
+        if "credit balance is too low" in str(e):
+            return {"ok": False, "message": "The key works, but the account has no API credit: top it up at https://platform.claude.com/dashboard"}
+        return {"ok": False, "message": f"Request refused: {e.message}"}
+    except anthropic.APIConnectionError:
+        return {"ok": False, "message": "Couldn't reach the service: check the internet connection."}
+    except Exception as e:  # e.g. missing Google credentials for Vertex
+        return {"ok": False, "message": str(e)[:300]}
 
 
 @app.delete("/api/ai/key")

@@ -76,6 +76,11 @@ Order matters:
 
 ## Gotchas
 
+- **Scan speed is bound by Wi-Fi transfer, not processing.** Measured: ~8 s per side at 600 dpi / JPEG 95 (~5.8 MB,
+  ~0.7 MB/s) even with all processing in the background. Each image block used to cost two round trips; `IMG` now
+  uses `read_ahead` and `#BSZ` (1 MiB). The scanner answers `#parOK` to *any* `#BSZ` value, so whether it is
+  honoured shows only in real block sizes. Uploads pause while a scan runs so they don't share the Wi-Fi.
+
 - **Live updates are polled** (`/api/events?since=N`, once a second), on purpose. One SSE stream per tab used up
   Chrome's six connections per host, and every other request hung.
 - The grid must use `/api/thumb` (cached 480 px), never full scans: hundreds of 4 MB JPEGs froze the browser.

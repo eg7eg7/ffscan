@@ -127,7 +127,8 @@ Uploads use [rclone](https://rclone.org), which keeps account tokens in its own 
 
 ### AI analysis
 
-Under **AI analysis**, paste an Anthropic API key and press **Save**. The key is checked with Anthropic and
+Under **AI analysis**, paste an Anthropic API key (create one and top up credit on the
+[Claude Platform dashboard](https://platform.claude.com/dashboard)) and press **Save**, then **Test**. The key is checked with Anthropic and
 stored in the macOS Keychain, never in a file. Then tick **Analyse photos with Claude**. Claude on Google Vertex
 AI is also supported (choose it under **Service**), if your Google Cloud project has quota for Claude models.
 
