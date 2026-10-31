@@ -15,6 +15,7 @@ Environment (all optional; the Docker image sets several of them):
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -51,6 +52,9 @@ DEFAULTS = {
     "auto_rotate": True,
     "enhance": False,         # also save an enhanced copy (original kept), with these steps:
     "enhance_opts": {"red_eye": True, "restore": True, "auto": True},
+    "enhance_location": "same",  # same: next to the original | subfolder: <album>/Enhanced | folder: enhance_folder/<album>
+    "enhance_folder": "",
+    "name_prefix": "",        # file name prefix; empty = scan time. Tokens: {album} {date}
     "watch": False,           # keep scanning new stacks until stopped
     "duplicates": "flag",     # flag | skip | off: same print already in the output folder (perceptual hash)
     "metadata": {"album": "", "title": "", "description": "", "date": "", "people": "", "place": "", "tags": ""},
@@ -194,19 +198,22 @@ upload_stats = {"total": 0, "done": 0, "failed": 0, "current": None}  # current 
 stats_lock = threading.Lock()
 
 
-def queue_upload(path, remote, base):
+def queue_upload(path, s):
+    path = Path(path)
+    root = next((r for r in roots(s) if r.resolve() in path.resolve().parents), path.parent.parent)
+    rel = path.resolve().relative_to(root.resolve()).as_posix()  # e.g. "Summer 1987/Enhanced/x_enhanced.jpg"
     with stats_lock:
         if upload_stats["done"] + upload_stats["failed"] >= upload_stats["total"]:  # previous batch finished
             upload_stats.update(total=0, done=0, failed=0, current=None)
         upload_stats["total"] += 1
-    uploads.put((str(path), remote, base))
+    uploads.put((str(path), s["upload"]["remote"], s["upload"]["path"], rel))
     emit("upload_queued", file=str(path))
 
 
 def upload_worker():
     while True:
-        path, remote, base = uploads.get()
-        dest = cloud.destination(remote.rstrip(":"), base, os.path.basename(os.path.dirname(path)), os.path.basename(path))
+        path, remote, base, rel = uploads.get()
+        dest = cloud.destination(remote.rstrip(":"), base, rel)
         upload_stats["current"] = os.path.basename(path)
         for attempt in range(3):
             try:
@@ -234,15 +241,60 @@ def upload_worker():
 job = {"thread": None, "cancel": threading.Event()}
 
 
-def process_page(page, s, batch_dir, stamp, backs):
+def roots(s):
+    """Folders the app reads and writes: Save to, plus a separate enhanced-copies folder when one is set."""
+    out = [Path(s["folder"]).expanduser()]
+    if s["enhance_location"] == "folder" and s["enhance_folder"]:
+        out.append(Path(s["enhance_folder"]).expanduser())
+    return out
+
+
+def enhanced_path(original, s, create=False):
+    """Where the enhanced copy of `original` goes (same name + _enhanced), per the enhance_location setting."""
+    if s["enhance_location"] == "subfolder":
+        folder = original.parent / "Enhanced"
+    elif s["enhance_location"] == "folder" and s["enhance_folder"]:
+        folder = Path(s["enhance_folder"]).expanduser() / original.parent.name  # keep album subfolders
+    else:
+        folder = original.parent
+    if create:
+        folder.mkdir(parents=True, exist_ok=True)
+    return folder / (original.stem + "_enhanced.jpg")
+
+
+def original_of(enhanced, s):
+    """The original of an _enhanced copy, wherever the copy was saved; None if it's gone."""
+    name = enhanced.stem.removesuffix("_enhanced") + ".jpg"
+    candidates = [enhanced.with_name(name), enhanced.parent.parent / name,
+                  Path(s["folder"]).expanduser() / enhanced.parent.name / name]
+    return next((c for c in candidates if c.exists()), None)
+
+
+def file_prefix(s, stamp):
+    """File name prefix for a stack: the user's prefix (with {album}/{date} filled in) or the scan time."""
+    p = s["name_prefix"].strip()
+    if not p:
+        return stamp
+    p = p.replace("{album}", s["metadata"]["album"].strip() or "Photos").replace("{date}", time.strftime("%Y-%m-%d"))
+    return re.sub(r'[\\/:*?"<>|]+', "-", p).strip(" .") or stamp
+
+
+def next_number(batch_dir, prefix):
+    """Highest number already used with this prefix in the album (incl. Enhanced/), so names never repeat."""
+    pattern = re.compile(re.escape(prefix) + r"_(\d+)(?:_back)?(?:_enhanced)?")
+    used = [int(m.group(1)) for f in batch_dir.rglob("*.jpg") if (m := pattern.fullmatch(f.stem))]
+    return max(used, default=0)
+
+
+def process_page(page, s, batch_dir, prefix, offset, backs):
     """Save one scanned side and run the pipeline. Returns the saved path or None if skipped.
 
     `backs` maps page index -> raw back scan; the scanner sends side A (back) before side B (picture),
     so the AI step can read writing on the back even when backs aren't being saved.
     """
-    path = batch_dir / f"{stamp}_{page.index + 1:03d}{'' if page.side == 'B' else '_back'}.jpg"
+    path = batch_dir / f"{prefix}_{offset + page.index + 1:03d}{'' if page.side == 'B' else '_back'}.jpg"
     RAW_DIR.mkdir(parents=True, exist_ok=True)  # untouched scan, so crop/rotate bugs can be reprocessed
-    raw = RAW_DIR / path.name
+    raw = RAW_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{path.name}"  # unique even with a fixed prefix
     raw.write_bytes(page.jpeg)
     for old in sorted(RAW_DIR.glob("*.jpg"), key=os.path.getmtime)[:-RAW_KEEP]:
         old.unlink()
@@ -270,7 +322,7 @@ def process_page(page, s, batch_dir, stamp, backs):
             return None
     files = [path]
     if s["enhance"] and page.side == "B":
-        enhanced = path.with_name(path.stem + "_enhanced.jpg")
+        enhanced = enhanced_path(path, s, create=True)
         enhance(path, enhanced, s)
         files.append(enhanced)
     rotation, faces = auto_rotation(path) if s["auto_rotate"] and page.side == "B" else (0, 0)
@@ -292,7 +344,7 @@ def process_page(page, s, batch_dir, stamp, backs):
 def queue_uploads(files, s):
     if s["upload"]["enabled"] and s["upload"]["remote"]:
         for f in files:
-            queue_upload(f, s["upload"]["remote"], s["upload"]["path"])
+            queue_upload(f, s)
 
 
 # ---------------------------------------------------------------- AI analysis (Claude on Vertex AI)
@@ -370,7 +422,8 @@ def scan_job(s):
                 err = sc.status().get("ERR")
                 if not err:
                     waiting = None
-                    stamp = time.strftime("%Y%m%d-%H%M%S")
+                    prefix = file_prefix(s, time.strftime("%Y%m%d-%H%M%S"))
+                    offset = next_number(batch_dir, prefix)
                     emit("stack_started")
                     pages = sc.scan(dpi=s["dpi"], color=s["color"], duplex=s["sides"] != "back",  # picture = side B, needs duplex
                                     deskew=s["deskew"], double_feed=s["double_feed"] or None, jpeg_quality=s["quality"])
@@ -378,7 +431,7 @@ def scan_job(s):
                         if cancel.is_set():
                             pages.close()  # sends CAN to the scanner
                             break
-                        if process_page(page, s, batch_dir, stamp, backs):
+                        if process_page(page, s, batch_dir, prefix, offset, backs):
                             count += 1
                 elif not s["watch"]:
                     raise ff680w.ScannerError(describe_error(err))
@@ -488,30 +541,36 @@ def get_events(since: int = 0):
 
 
 @app.post("/api/pick-folder")
-def pick_folder():
-    """Native macOS folder chooser (the app runs locally, so the dialog opens on this Mac)."""
+def pick_folder(body: dict | None = None):
+    """Native macOS folder chooser (the app runs locally, so the dialog opens on this Mac).
+
+    {"key": "enhance_folder"} picks the enhanced-copies folder instead of Save to.
+    """
+    key = (body or {}).get("key", "folder")
+    if key not in ("folder", "enhance_folder"):
+        raise HTTPException(400, "unknown folder setting")
+    prompt = "Save enhanced copies to:" if key == "enhance_folder" else "Save scanned photos to:"
     try:
-        out = run(["osascript", "-e", 'POSIX path of (choose folder with prompt "Save scanned photos to:")'])
+        out = run(["osascript", "-e", f'POSIX path of (choose folder with prompt "{prompt}")'])
     except subprocess.CalledProcessError:
         return {"folder": None}  # user cancelled
     except FileNotFoundError:
         raise HTTPException(501, "the folder picker needs macOS; type the folder path instead")
-    return put_settings({"folder": out.strip()})
+    return put_settings({key: out.strip()})
 
 
 def safe_path(file):
-    """Only serve/modify files inside the configured output folder."""
-    root = Path(load_settings()["folder"]).expanduser().resolve()
+    """Only serve/modify files inside the app's folders (Save to, and a separate enhanced folder if set)."""
     p = Path(file).expanduser().resolve()
-    if root not in p.parents or not p.is_file():
+    if not any(r.resolve() in p.parents for r in roots(load_settings())) or not p.is_file():
         raise HTTPException(404, "not found")
     return p
 
 
 @app.get("/api/photos")
 def list_photos():
-    root = Path(load_settings()["folder"]).expanduser()
-    files = sorted(root.glob("**/*.jpg"), key=os.path.getmtime, reverse=True)[:500]
+    found = {f for r in roots(load_settings()) for f in r.glob("**/*.jpg")}
+    files = sorted(found, key=os.path.getmtime, reverse=True)[:500]
     ledger = read_ledger()
     duplicate_of = {}  # later scans of a print -> the first scan of it
     if load_settings()["duplicates"] != "off":
@@ -572,11 +631,15 @@ def rotate(body: dict):
 
 @app.post("/api/enhance")
 def enhance_one(body: dict):
+    s = load_settings()
     p = safe_path(body["file"])
     if p.stem.endswith("_enhanced"):  # re-enhance from the original, never stack enhancements
-        p = safe_path(str(p.with_name(p.stem.removesuffix("_enhanced") + ".jpg")))
-    out = p.with_name(p.stem + "_enhanced.jpg")
-    steps = enhance(p, out, load_settings())
+        original = original_of(p, s)
+        if not original:
+            raise HTTPException(404, "the original of this enhanced copy is gone")
+        p = safe_path(str(original))
+    out = enhanced_path(p, s, create=True)
+    steps = enhance(p, out, s)
     run(["exiftool", "-q", "-overwrite_original", "-tagsFromFile", str(p), "-all:all", str(out)])  # keep metadata + rotation
     emit("photo", file=str(out), index=-1, side="B", rotation=get_rotation(out))
     return {"file": str(out), "steps": steps}
@@ -644,7 +707,7 @@ def analyze(body: dict):
         p = safe_path(f)
         if p.stem.endswith(("_back", "_enhanced")):
             continue
-        files = [p] + [x for x in [p.with_name(p.stem + "_enhanced.jpg")] if x.exists()]
+        files = [p] + [x for x in [enhanced_path(p, s)] if x.exists()]
         back = p.with_name(p.stem + "_back.jpg")
         # an existing rotation (faces or the user) wins over the AI's guess
         ai_jobs.put((p, files, back if back.exists() else None, get_rotation(p) != 0, s))
@@ -748,7 +811,7 @@ def upload(body: dict):
         raise HTTPException(400, "connect a cloud account under Cloud upload first")
     files = [p["file"] for p in list_photos() if p["upload"] != "uploaded"] if body.get("pending") else body["files"]
     for f in files:
-        queue_upload(safe_path(f), s["upload"]["remote"], s["upload"]["path"])
+        queue_upload(safe_path(f), s)
     return {"queued": len(files)}
 
 

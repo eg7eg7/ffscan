@@ -144,8 +144,12 @@ def make_folder(name, path):
         raise RuntimeError((r.stderr.strip().splitlines() or ["failed"])[-1])
 
 
-def destination(remote, folder, album, filename):
-    """rclone destination path for one photo. Google Photos only accepts uploads into album/<name>/."""
+def destination(remote, folder, rel):
+    """rclone destination for one photo; `rel` mirrors the local layout, e.g. "Summer 1987/Enhanced/x.jpg".
+
+    Google Photos only accepts uploads into album/<name>/: the first folder of `rel` becomes the album.
+    """
+    parts = rel.split("/")
     if remote_type(remote) == "googlephotos":
-        return f"{remote}:album/{album}/{filename}"
-    return f"{remote}:{folder.strip('/')}/{album}/{filename}"
+        return f"{remote}:album/{parts[0] if len(parts) > 1 else 'ffscan'}/{parts[-1]}"
+    return f"{remote}:{folder.strip('/')}/{rel}"

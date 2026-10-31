@@ -93,6 +93,33 @@ h = lambda im: [dupes.dhash(im.rotate(a, expand=True)) for a in (0, 90, 180, 270
 assert dupes.distance(h(grad.rotate(90, expand=True).resize((60, 90))), h(grad)) <= dupes.THRESHOLD
 assert dupes.distance(h(other), h(grad)) > dupes.THRESHOLD
 
+import tempfile
+
+from ffscan import app
+
+# file names: prefix tokens, unsafe characters, numbering continues after existing files (never overwrite)
+with tempfile.TemporaryDirectory() as tmp:
+    s = {**app.DEFAULTS, "folder": tmp, "metadata": {**app.DEFAULTS["metadata"], "album": "Summer 87"}}
+    assert app.file_prefix({**s, "name_prefix": ""}, "20260101-120000") == "20260101-120000"
+    assert app.file_prefix({**s, "name_prefix": "{album}"}, "x") == "Summer 87"
+    assert app.file_prefix({**s, "name_prefix": "a/b:c"}, "x") == "a-b-c"
+    album = Path(tmp) / "Summer 87"
+    (album / "Enhanced").mkdir(parents=True)
+    for name in ("Summer 87_001.jpg", "Summer 87_002_back.jpg", "Enhanced/Summer 87_007_enhanced.jpg", "Other_050.jpg"):
+        (album / name).write_bytes(b"")
+    assert app.next_number(album, "Summer 87") == 7, app.next_number(album, "Summer 87")
+    assert app.next_number(album, "New") == 0
+
+    # enhanced copies: each location round-trips back to its original
+    original = album / "Summer 87_001.jpg"
+    other = Path(tmp) / "elsewhere"
+    for loc in ("same", "subfolder", "folder"):
+        st = {**s, "enhance_location": loc, "enhance_folder": str(other)}
+        e = app.enhanced_path(original, st, create=True)
+        e.write_bytes(b"")
+        assert app.original_of(e, st) == original, (loc, e)
+    assert app.enhanced_path(original, {**s, "enhance_location": "subfolder"}).parent.name == "Enhanced"
+
 from ffscan.photo_ai import to_metadata
 
 r = {"rotation": 0, "caption": "Kids at the beach.", "tags": ["beach"], "date_estimate": "1980s",

@@ -27,6 +27,8 @@ Day-to-day tracking happens on the [project board](https://github.com/users/eg7e
 - **Duplicate detection:** dHash in four rotations. Tuned on repeated scans of an 18-print stack: the same
   print differs by 0–6 bits, different prints by 9 or more; the threshold is 7.
 - **Safe delete:** photos go to the macOS Trash.
+- **File-name prefix** (`{album}`, `{date}`; numbering continues, never overwrites) and **enhanced-copy location**
+  (same folder, *Enhanced* subfolder, or another folder; uploads mirror the layout).
 - **Docker image** (`Dockerfile`, `docker-compose.yml`) running everything that doesn't need macOS.
 - **Settings sidebar** in collapsible sections with live summaries, and an Activity log pinned to the window.
 

@@ -80,7 +80,10 @@
   <dd>The folder on this Mac where photos go. Type a path or press <strong>Choose…</strong> for a folder picker.
     Each batch goes into a subfolder named after the <strong>Album</strong>, or today's date (e.g. <code>2026-10-30</code>) if no album is set.</dd>
   <dt>File names</dt>
-  <dd><code>20261030-185940_001.jpg</code> is the scan time plus the photo's number in the stack.
+  <dd>By default a photo is named after the scan time plus its number in the stack, e.g. <code>20261030-185940_001.jpg</code>.
+    Type a prefix under <strong>File names</strong> to use your own, e.g. <code>Grandma</code> gives <code>Grandma_001.jpg</code>,
+    <code>Grandma_002.jpg</code>… You can include <code>{album}</code> (the album name) and <code>{date}</code> (today, YYYY-MM-DD).
+    Numbering continues after the highest number already in the album, so scanning another stack never overwrites a file.
     Backs end in <code>_back.jpg</code>, enhanced copies in <code>_enhanced.jpg</code>.</dd>
 </dl>
 
@@ -108,6 +111,9 @@
   <dt>Also save an enhanced copy</dt>
   <dd>Saves a second file (<code>…_enhanced.jpg</code>) with the fixes ticked below it. The original is always kept, so you can compare and delete whichever you don't want.
     The <strong>Enhance</strong> button on each photo applies the same fixes to photos scanned earlier.
+    <strong>Save enhanced copies</strong> decides where they go: next to the original, in an <em>Enhanced</em> subfolder of each
+    album, or in another folder of your choice (with the same album subfolders). Enhanced copies show in the grid wherever
+    they are, and cloud uploads keep the same folder layout.
     <ul>
       <li><strong>Remove red-eye</strong>: Apple's face detection finds the eyes, and only strongly red pixels inside them are turned neutral. Skin and everything else stay untouched.</li>
       <li><strong>Restore faded colours</strong>: old prints fade unevenly and drift to a red or magenta cast. Each colour channel is stretched back to full range, which restores contrast and neutral colours together.</li>

@@ -20,6 +20,8 @@ organised into albums, tagged and optionally uploaded to the cloud.
   address it has, and finds it again if the address changes.
 - **Auto-crop and straighten**, so each file is just the photo, without the grey scanner background.
 - **Backs of prints:** save the picture only, the back too, or skip backs that have no writing on them.
+- **Your file names and folders:** a file-name prefix with `{album}`/`{date}` (numbering never overwrites),
+  and a choice of where enhanced copies go (next to the original, an *Enhanced* subfolder, or another folder).
 - **Enhanced copies** (originals are always kept):
   - Remove red-eye: Apple Vision finds the eyes, and only red pixels inside them are changed.
   - Restore faded colours.

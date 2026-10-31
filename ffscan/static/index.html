@@ -128,6 +128,8 @@
     <details class="section" data-section="save" open>
       <summary><span class="sec-title" data-tip="The folder on this Mac where scanned photos are saved. Each album gets its own subfolder (or today&#39;s date if no album).">Save to</span><span class="sum" data-sum="save"></span></summary>
     <div class="folder"><input type="text" id="folder" data-key="folder"><button id="pick">Choose…</button></div>
+    <label data-tip="Start of every file name. Leave empty to use the scan time (e.g. 20261031-101500_001.jpg). You can use {album} and {date}. Numbers continue after the highest one already in the album, so no file is ever overwritten.">File names <input type="text" data-key="name_prefix" placeholder="scan time, e.g. 20261031-101500"></label>
+    <div class="hint" id="namePreview"></div>
     </details>
     <details class="section" data-section="scan" open>
       <summary><span class="sec-title">Scan</span><span class="sum" data-sum="scan"></span></summary>
@@ -157,6 +159,13 @@
       <label class="row" data-tip="Finds eyes with Apple's face detection and neutralises red flash reflections in the pupils. Only strongly red pixels inside the eyes are changed; skin is left alone."><input type="checkbox" data-key="enhance_opts.red_eye"> Remove red-eye</label>
       <label class="row" data-tip="Old prints fade unevenly and drift to a red or magenta cast. This rebalances each colour channel to bring back contrast and neutral colours."><input type="checkbox" data-key="enhance_opts.restore"> Restore faded colours</label>
       <label class="row" data-tip="Measures brightness, contrast and colour saturation of each photo and nudges them toward a natural look: dark photos get lighter, flat ones more contrast, dull ones more colour. Adds slight sharpening."><input type="checkbox" data-key="enhance_opts.auto"> Auto brightness, contrast &amp; saturation</label>
+      <label data-tip="Next to the original: same folder, named …_enhanced.jpg. Enhanced subfolder: an 'Enhanced' folder inside each album. Another folder: a separate place of your choice, with the same album subfolders. Cloud uploads keep this layout.">Save enhanced copies
+        <select data-key="enhance_location">
+          <option value="same">Next to the original</option>
+          <option value="subfolder">In an "Enhanced" subfolder</option>
+          <option value="folder">In another folder…</option>
+        </select></label>
+      <div class="folder enhance-folder"><input type="text" data-key="enhance_folder" placeholder="folder for enhanced copies"><button id="pickEnhance" type="button">Choose…</button></div>
     </div>
     <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Faint paper-maker logos and lab codes count as blank; handwriting and stamps are kept."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
     <label data-tip="Recognises a print you already scanned, even at another resolution, crop or orientation, by comparing a visual fingerprint with every photo in the Save to folder. Mark keeps it and shows a Duplicate badge; Skip doesn't save it at all.">Duplicates
@@ -308,6 +317,12 @@ function render() {
     if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? "";
   });
   document.querySelectorAll(".vertex-only").forEach(el => { el.hidden = settings.ai?.provider !== "vertex"; });
+  document.querySelectorAll(".enhance-folder").forEach(el => { el.hidden = settings.enhance_location !== "folder"; });
+  // live example of the next file name (the server also fills {album}/{date} and continues numbering)
+  const prefix = (settings.name_prefix || "").trim()
+    .replace("{album}", settings.metadata?.album?.trim() || "Photos")
+    .replace("{date}", new Date().toISOString().slice(0, 10)).replace(/[\\/:*?"<>|]+/g, "-");
+  $("#namePreview").textContent = `Example: ${prefix || "20261031-101500"}_001.jpg`;
   updateSummaries();
 }
 
@@ -325,7 +340,7 @@ const SIDES = { picture: "picture only", both: "picture + back", back: "back onl
 function updateSummaries() {
   const s = settings, on = (v, t) => (v ? t : null), join = a => a.filter(Boolean).join(" · ");
   const sums = {
-    save: (s.folder || "").replace(/\/$/, "").split("/").slice(-2).join("/"),
+    save: join([(s.folder || "").replace(/\/$/, "").split("/").slice(-2).join("/"), s.name_prefix ? `“${s.name_prefix}”` : null]),
     scan: join([`${s.dpi} dpi`, s.color === "M008" ? "grey" : "colour", SIDES[s.sides], on(s.watch, "keep scanning")]),
     processing: join([on(s.crop, "crop"), on(s.deskew, "straighten"), on(s.auto_rotate, "rotate"),
                       on(s.enhance, "enhance"), s.duplicates === "off" ? null : "duplicates"]) || "nothing",
@@ -353,7 +368,7 @@ document.querySelectorAll("[data-key]").forEach(el => el.addEventListener("chang
   const [k, sub] = el.dataset.key.split(".");
   settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(sub ? { [k]: { [sub]: v } } : { [k]: v }) });
   render();  // refresh section summaries and Vertex-only fields
-  if (k === "folder") loadPhotos();
+  if (["folder", "enhance_location", "enhance_folder"].includes(k)) loadPhotos();
   if (k === "host") checkScanner();
 }));
 
@@ -492,6 +507,12 @@ $("#connectCancel").onclick = () => { post("/api/remotes/cancel"); $("#connectDi
 $("#pick").onclick = async () => {
   const r = await post("/api/pick-folder");
   if (r.folder) { settings = r; render(); loadPhotos(); }
+};
+$("#pickEnhance").onclick = async () => {
+  try {
+    const r = await post("/api/pick-folder", { key: "enhance_folder" });
+    if (r.enhance_folder) { settings = r; render(); loadPhotos(); }
+  } catch (e) { log(e.message, true); }
 };
 
 // ---------- scanner status
