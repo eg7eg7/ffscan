@@ -1,6 +1,6 @@
-"""Epson FastFoto FF-680W client: ESC/I-2 over Epson's "IS" network protocol (TCP 1865).
+"""Epson FastFoto FF-680W client: ESC/I-2 over USB, or over Epson's "IS" network protocol (TCP 1865).
 
-    with FF680W() as sc:                       # host found automatically via Bonjour
+    with FF680W() as sc:                       # USB if plugged in, else found on the network via Bonjour
         print(sc.info(), sc.status())
         for page in sc.scan(dpi=600):
             open(f"{page.index:02d}{page.side}.jpg", "wb").write(page.jpeg)
@@ -501,15 +501,36 @@ def holder(hello):
     return socket.inet_ntop(family, hello[8:8 + hello[7]])
 
 
+USB_ID = (0x04B8, 0x016B)  # Epson, FF-680W
+USB_OUT, USB_IN = 0x01, 0x82  # interface 0 bulk endpoints (0x83 is an interrupt endpoint: the scan button)
+
+
+def _usb_device():
+    """The scanner on USB (pyusb + libusb), or None: not plugged in, or no USB support installed."""
+    try:
+        import usb.core
+
+        return usb.core.find(idVendor=USB_ID[0], idProduct=USB_ID[1])
+    except Exception:  # ImportError, or usb.core.NoBackendError without libusb (Docker, Linux without it)
+        return None
+
+
 class FF680W:
     LOCK = bytes([0x01, 0xA0, 0x04, 0x00, 0x00, 0x01, 0x2C])  # as sent by Epson's client
     BLOCK_SIZE = 1 << 20  # #BSZ image block size: 1 MiB, the same default Epson's own engine sends
 
     def __init__(self, host=None, port=1865, timeout=60, verbose=False):
+        """host: the scanner's address, "usb", or empty for automatic (USB if it's plugged in, else the network)."""
         self.host, self.port, self.timeout, self.verbose = host, port, timeout, verbose
-        self.sock = None
+        self.sock = self.usb = None
 
     def __enter__(self):
+        if self.host in (None, "", "usb"):
+            self.usb = _usb_device()
+            if self.usb:
+                return self._enter_usb()
+            if self.host == "usb":
+                raise ScannerError("no scanner on USB: is the cable plugged in? (USB needs: brew install libusb)")
         auto = not self.host
         if auto:
             self.host = discover()
@@ -540,16 +561,47 @@ class FF680W:
             raise ScannerError("scanner did not enter ESC/I-2 mode")
         return self
 
+    def _enter_usb(self):
+        """Same ESC/I-2 as over the network, as raw bytes on the bulk endpoints: no "IS" framing, no lock."""
+        import usb.core
+        import usb.util
+
+        self.host = "usb"
+        try:
+            usb.util.claim_interface(self.usb, 0)
+        except usb.core.USBError as e:
+            raise ScannerError(f"the scanner's USB connection is in use by another app (Epson Scan?): {e}")
+        try:
+            ok = self._xfer(b"\x1cX", 1) == b"\x06"
+        except usb.core.USBTimeoutError:  # left mid-command by an interrupted session: same as replugging the cable
+            self.usb.reset()
+            time.sleep(2)
+            usb.util.claim_interface(self.usb, 0)
+            ok = self._xfer(b"\x1cX", 1) == b"\x06"
+        if not ok:
+            raise ScannerError("scanner did not enter ESC/I-2 mode")
+        return self
+
     def __exit__(self, *exc):
         try:
             self.command("FIN ")
         finally:
-            _send_packet(self.sock, 0x2101)
-            _recv_packet(self.sock)
-            self.sock.close()
+            if self.usb:
+                import usb.util
+
+                usb.util.release_interface(self.usb, 0)
+                usb.util.dispose_resources(self.usb)
+            else:
+                _send_packet(self.sock, 0x2101)
+                _recv_packet(self.sock)
+                self.sock.close()
 
     def _xfer(self, data, reply_len):
         """Wrap ESC/I bytes in a 0x2000 packet; the scanner sends at most reply_len back."""
+        if self.usb:
+            if data:
+                self.usb.write(USB_OUT, data, timeout=self.timeout * 1000)
+            return bytes(self.usb.read(USB_IN, reply_len, timeout=self.timeout * 1000))
         _send_packet(self.sock, 0x2000, struct.pack(">II", len(data), reply_len) + data)
         ptype, payload = _recv_packet(self.sock)
         if ptype != 0xA000:
@@ -558,7 +610,11 @@ class FF680W:
 
     def command(self, cmd, params=b""):
         """Send a 4-char command (+param block); return (64-byte reply header, body)."""
-        hdr = self._xfer(cmd.encode() + b"x%07X" % len(params) + params, 64)
+        request = cmd.encode() + b"x%07X" % len(params)
+        if self.usb and params:  # over USB the header and the parameter block must be separate transfers
+            self.usb.write(USB_OUT, request, timeout=self.timeout * 1000)
+            request = params
+        hdr = self._xfer(request if self.usb else request + params, 64)
         body_len = int(hdr[5:12], 16)
         parts, got = [], 0
         while got < body_len:

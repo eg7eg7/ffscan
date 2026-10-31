@@ -16,8 +16,9 @@ organised into albums, tagged and optionally uploaded to the cloud.
 
 - **Fast batch scanning** of up to 36 prints per stack, both sides in one pass, 50–600 dpi, colour or greyscale,
   with live thumbnails as each photo comes off the scanner.
-- **Finds the scanner automatically** on your network (Bonjour, with a network-scan fallback), whatever IP
-  address it has, and finds it again if the address changes.
+- **USB or Wi-Fi:** plugged in with a USB cable, the scanner runs at its full mechanical speed (about 6.5 s per
+  print at 600 dpi, both sides). Over Wi-Fi it is found automatically (Bonjour, with a network-scan fallback),
+  whatever IP address it has, but each 600 dpi print takes about twice as long to transfer.
 - **Auto-crop and straighten**, so each file is just the photo, without the grey scanner background.
 - **Backs of prints:** save the picture only, the back too, or skip backs that have no writing on them.
 - **Your file names and folders:** a file-name prefix with `{album}`/`{date}` (numbering never overwrites),
@@ -77,10 +78,11 @@ xcode-select --install
 On Apple Silicon Macs, follow the two `echo … >> ~/.zprofile` / `eval …` lines Homebrew prints at the end so
 that `brew` is on your PATH, then open a new Terminal window.
 
-**3. Python and the two tools ffscan uses:** exiftool writes photo metadata, and rclone handles cloud uploads.
+**3. Python and the tools ffscan uses:** exiftool writes photo metadata, rclone handles cloud uploads, and
+libusb lets ffscan use the scanner over a USB cable (much faster than Wi-Fi at 600 dpi).
 
 ```bash
-brew install python exiftool rclone
+brew install python exiftool rclone libusb
 ```
 
 **4. Download and start ffscan**

@@ -82,6 +82,9 @@ Order matters:
 - The scanner sends at most `reply_len` bytes per request; pull bodies with empty `0x2000` requests.
   Never ask for header and body in one reply (`reply_len` > 64 on a command): the scanner stops answering and
   keeps the session locked even after the connection drops, until it is switched off and on.
+- USB (`FF680W` with host empty or `"usb"`, pyusb + libusb): same commands, raw bulk transfers, no lock. Header
+  and parameter block must be **separate** writes or `PARA` hangs; `_enter_usb` resets a stuck device. USB moves
+  a 600 dpi side in ~0.3 s (Wi-Fi ~4.5 s): over USB the scanner's own ~6.5 s per print is the limit.
 - Hardware crop (`CRP `) is a no-op; crop is done in software (`find_photo_box`).
 - Sample the crop background 1.5–3% in from the edges: the outermost columns of 300 dpi scans differ.
 - Pure-white pixels (≥ 250) are deskew corner fill, not photo.

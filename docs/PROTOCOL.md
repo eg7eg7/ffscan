@@ -21,7 +21,7 @@ TCP 1865 ─ "IS" packets (Epson network framing)
 |---|---|
 | Discovery | Bonjour `_scanner._tcp`, instance "EPSON FF-680W", port 1865 (TXT: `mdl=FF-680W`, `scannerAvailable=1`, `adminurl`) |
 | Other ports | 80/443: built-in web admin. 631 and 9100 are closed. |
-| USB (not used by ffscan) | VID `0x04B8`, PID `0x016B`; Epson's internal model ID `ES0170` |
+| USB | VID `0x04B8`, PID `0x016B` (USB 3); Epson's internal model ID `ES0170`. See [USB](#usb). |
 | Command set | ESC/I-2 (Epson Scan 2 `ESCommandType` 4, class `ESCI2Scanner`) |
 | Image format | JPEG only (no raw RGB over the wire) |
 
@@ -155,11 +155,23 @@ full 8.5″ width, with the height as the longest photo you expect.
 - **The 300 dpi edge strip.** The outermost columns of a 300 dpi scan differ from the grey backing; sample
   the background colour slightly inward when cropping.
 
+## USB
+
+The same ESC/I-2 commands, as raw bytes on interface 0's bulk endpoints (OUT `0x01`, IN `0x82`; `0x83` is an
+interrupt endpoint, most likely the scan button). There is no "IS" framing and no lock: claim the interface,
+send `1C 58` and read the `06`, then commands as above, reading exactly the bytes expected (64-byte header,
+then the body).
+
+- **A command's header and its parameter block are separate bulk transfers.** Sent as one transfer, `PARA`
+  is never answered.
+- An interrupted session can leave the scanner not answering: a USB reset (the same as replugging) clears it.
+- Measured at 600 dpi: each side's data arrives in ~0.3 s of transfer, against ~4.5 s over Wi-Fi. A print then
+  takes ~6.5 s, the scanner's own speed, for one side or both.
+
 ## 4. Not covered yet
 
 - The **Scan button** on the scanner (push-scan events; Epson's model file names `com.epson.EventManager`
   as the destination and enables an interrupt channel).
-- USB transport (`USBInterface` in Epson's `Scanner.framework`: bulk in/out plus an interrupt pipe).
 - The newer TLS network path (`ESNWInterface`).
 
 ## Method

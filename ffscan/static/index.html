@@ -232,7 +232,7 @@
     <label data-tip="Stops the scan if two photos stick together and feed at once, so none get skipped. Sensitive catches more but may stop on thick or curled photos. Off never stops.">Double-feed detection
       <select data-key="double_feed" data-type="int"><option value="1">Normal</option><option value="3">Sensitive</option><option value="0">Off</option></select></label>
     <label data-tip="JPEG compression, 50–100. 90 is visually lossless for prints; 95–100 gives bigger files with little visible gain.">JPEG quality <input type="number" min="50" max="100" data-key="quality" data-type="int"></label>
-    <label data-tip="Leave empty to find the scanner on your network automatically. If that fails, enter its network name (EPSONxxxxxx.local) or IP address, shown on the scanner's network status sheet.">Address <input type="text" data-key="host" placeholder="automatic"></label>
+    <label data-tip="Leave empty: USB if the scanner is plugged into this Mac (much faster at 600 dpi), otherwise it's found on your network. Type usb for USB only, or the scanner's network name (EPSONxxxxxx.local) or IP address for Wi-Fi only.">Address <input type="text" data-key="host" placeholder="automatic"></label>
     <div id="device" class="hint"></div>
     </details>
   </aside>

@@ -254,7 +254,9 @@
 <h2 id="scanner">Scanner connection</h2>
 <dl>
   <dt>Address (under Advanced)</dt>
-  <dd>Leave it empty and the app finds the scanner on your network automatically. If that fails, type the scanner's network name (e.g. <code>EPSONXXXXXX.local</code>) or its IP address.
+  <dd>Leave it empty and the app uses the scanner over <strong>USB</strong> if it's plugged into this Mac, and
+    otherwise finds it on your network. USB is much faster at 600 dpi: a print takes about 6.5 s with both sides,
+    against about 12.5 s over Wi-Fi. Type <code>usb</code> to use only USB, or the scanner's network name (e.g. <code>EPSONXXXXXX.local</code>) or IP address to use only Wi-Fi.
     Hold the scanner's Wi-Fi button to print or show its network status, or check your router's device list.</dd>
   <dt>Status line</dt>
   <dd>Shows whether the scanner is ready, scanning, out of photos or jammed. Press <strong>Refresh</strong> to check again.
