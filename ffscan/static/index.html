@@ -148,6 +148,13 @@
         <option value="600">600 dpi (max detail, ~2× slower)</option>
         <option value="150">150 dpi (preview / web)</option>
       </select></label>
+    <label data-tip="How wide a strip the scanner reads (prints are centred in the feeder). Narrower sends less data over Wi-Fi, so it scans faster. Anything wider than the setting is cut off: pick the widest print in the stack, measured across the feeder.">Widest print
+      <select data-key="scan_width" data-type="float">
+        <option value="8.5">Any size (8.5″, full width)</option>
+        <option value="7.5">Up to 5×7 (7.5″)</option>
+        <option value="6.5">Up to 4×6 (6.5″, ~25% faster)</option>
+        <option value="5.5">Up to 3½×5 (5.5″)</option>
+      </select></label>
     <label data-tip="Colour keeps everything as is. Greyscale saves black-and-white files (smaller), useful for old B&W prints.">Colour
       <select data-key="color"><option value="C024">Colour</option><option value="M008">Greyscale</option></select></label>
     <label data-tip="Fast: load the photos face DOWN; the scanner then sends only the picture, about twice as fast, but backs aren't read. Otherwise load face up: the scanner reads both sides in one pass. Picture only saves just the image. Picture and back also saves the back (dates or notes written on it). Back only saves just the backs.">Sides
@@ -407,7 +414,7 @@ function updateSummaries() {
   const s = settings, on = (v, t) => (v ? t : null), join = a => a.filter(Boolean).join(" · ");
   const sums = {
     save: join([(s.folder || "").replace(/\/$/, "").split("/").slice(-2).join("/"), s.name_prefix ? `“${s.name_prefix}”` : null]),
-    scan: join([`${s.dpi} dpi`, s.color === "M008" ? "grey" : "colour", SIDES[s.sides], on(s.watch, "keep scanning")]),
+    scan: join([`${s.dpi} dpi`, s.color === "M008" ? "grey" : "colour", SIDES[s.sides], s.scan_width < 8.5 && `${s.scan_width}″ wide`, on(s.watch, "keep scanning")]),
     processing: join([on(s.crop, "crop"), on(s.deskew, "straighten"), on(s.auto_rotate, "rotate"),
                       on(s.enhance, "enhance"), s.duplicates === "off" ? null : "duplicates"]) || "nothing",
     metadata: join([s.metadata?.album, s.metadata?.date, s.metadata?.place]) || "none",
@@ -431,6 +438,7 @@ document.querySelectorAll("details.section").forEach(d => {
 document.querySelectorAll("[data-key]").forEach(el => el.addEventListener("change", async () => {
   let v = el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.type === "int") v = parseInt(v, 10);
+  if (el.dataset.type === "float") v = parseFloat(v);
   const [k, sub] = el.dataset.key.split(".");
   settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(sub ? { [k]: { [sub]: v } } : { [k]: v }) });
   render();  // refresh section summaries and Vertex-only fields

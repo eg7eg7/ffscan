@@ -48,6 +48,7 @@ DEFAULTS = {
     "deskew": True,
     "double_feed": 1,         # 0 off, 1, 3
     "quality": 90,
+    "scan_width": 8.5,        # inches read across the feeder, centred; narrower for small prints = faster
     "auto_rotate": True,
     "enhance": False,         # also save an enhanced copy (original kept), with these steps:
     "enhance_opts": {"red_eye": True, "restore": True, "auto": True,  # automatic fixes
@@ -594,7 +595,8 @@ def scan_job(s):
                     # single-sided, so the scanner sends only side A, which is then the picture (about half the data)
                     fast = s["sides"] == "fast"
                     pages = sc.scan(dpi=s["dpi"], color=s["color"], duplex=s["sides"] in ("picture", "both"),
-                                    deskew=s["deskew"], double_feed=s["double_feed"] or None, jpeg_quality=s["quality"])
+                                    deskew=s["deskew"], double_feed=s["double_feed"] or None, jpeg_quality=s["quality"],
+                                    width_in=s["scan_width"])
                     FEEDING.set()
                     try:
                         for page in pages:

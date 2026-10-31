@@ -289,6 +289,11 @@ def _scan_subnet():
     return None
 
 
+def acq_width(width_in, dpi):
+    """Scan width in pixels, clamped to the feeder's 2-8.5 in."""
+    return int(max(2.0, min(8.5, width_in)) * dpi)
+
+
 def _connect(host, port, timeout):
     """TCP connection, IPv4 first. Bonjour names also resolve to IPv6 link-local addresses, which fail with
     "No route to host" without an interface scope, and a session over IPv6 left a lock we couldn't see."""
@@ -395,11 +400,12 @@ class FF680W:
         return self._query("STAT")
 
     def scan(self, dpi=300, color="C024", duplex=True, deskew=False,
-             double_feed=None, jpeg_quality=90, gamma="UG18", max_length_in=36, poll_timeout=60):
+             double_feed=None, jpeg_quality=90, gamma="UG18", max_length_in=36, width_in=8.5, poll_timeout=60):
         """Feed every photo in the tray; yield Page per side as each finishes.
 
         color: C024 (24-bit colour), M008 (8-bit grey). double_feed: None, 1 or 3 (DFL1/DFL3).
         dpi: one of 50 75 100 150 200 240 300 360 400 600 (600 = optical max).
+        width_in: width of the strip read, centred like the feeder (ALGN CNTR); narrower = less data to send.
         """
         err = self.status().get("ERR")
         if err:
@@ -408,10 +414,11 @@ class FF680W:
         adf = "DPLX" * duplex + "PEDT" + "SKEW" * deskew  # "CRP " is accepted but has no effect; use autocrop()
         if double_feed:
             adf += f"DFL{double_feed}"
-        width, length = int(8.5 * dpi), int(max_length_in * dpi)
+        width, length = acq_width(width_in, dpi), int(max_length_in * dpi)
+        left = (int(8.5 * dpi) - width) // 2  # prints are centred in the feeder
         params = (
             f"#ADF{adf}#COL{color}#FMTJPG #JPGd{jpeg_quality:03d}#GMM{gamma}"
-            f"#RSMi{dpi:07d}#RSSi{dpi:07d}#ACQi0000000i0000000i{width:07d}i{length:07d}"
+            f"#RSMi{dpi:07d}#RSSi{dpi:07d}#ACQi{left:07d}i0000000i{width:07d}i{length:07d}"
         ).encode()
         # image block size. Without #BSZ the scanner sends 64 KB blocks, each costing two Wi-Fi round trips
         # (~8 s per 600 dpi side). Epson's engine sends BufferSizeValue from the model file, default 0x100000

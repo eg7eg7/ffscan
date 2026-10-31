@@ -32,6 +32,10 @@ from ffscan.ff680w import holder
 assert holder(bytes.fromhex("0104000000")) is None  # free
 assert holder(bytes.fromhex("0104810001010110fe80000000000000000000000000abcd")) == "fe80::abcd"
 assert holder(bytes.fromhex("01048100010101040a000002")) == "10.0.0.2"
+from ffscan.ff680w import acq_width
+
+assert acq_width(8.5, 600) == 5100 and acq_width(8.5, 300) == 2550  # full width, as always sent
+assert acq_width(6.5, 600) == 3900 and acq_width(20, 600) == 5100 and acq_width(1, 300) == 600  # clamped 2-8.5 in
 from ffscan.ff680w import _longest_run
 F, T = False, True
 assert _longest_run([T, F, F, F, F, F, T, T, T, F, T, T, F, F, F, F, F, T]) == (6, 12)  # edge specks lose, 1-gap bridged
