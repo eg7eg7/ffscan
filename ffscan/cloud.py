@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 import threading
+from urllib.parse import quote
 
 PROVIDERS = {
     "drive": {"label": "Google Drive", "type": "drive", "params": {"scope": "drive.file"}, "oauth": True,
@@ -142,6 +143,28 @@ def make_folder(name, path):
     r = _rclone("mkdir", f"{name}:{path.strip('/')}", timeout=60)
     if r.returncode != 0:
         raise RuntimeError((r.stderr.strip().splitlines() or ["failed"])[-1])
+
+
+# provider -> web page of one uploaded file, from its ID. Private links (sign-in needed), never a public share.
+WEB_URL = {
+    "drive": "https://drive.google.com/file/d/{id}/view",
+    "googlephotos": "https://photos.google.com/lr/photo/{id}",
+    "box": "https://app.box.com/file/{id}",
+}
+
+
+def web_url(dest):
+    """Browser link for an uploaded file at rclone path `dest`, or None if the provider has no file page."""
+    remote, _, path = dest.partition(":")
+    kind = remote_type(remote)
+    if kind == "dropbox":
+        folder, _, name = path.rpartition("/")
+        return f"https://www.dropbox.com/home/{quote(folder)}?preview={quote(name)}"
+    if kind not in WEB_URL:
+        return None
+    r = _rclone("lsjson", "--stat", dest, timeout=60)
+    file_id = json.loads(r.stdout or "{}").get("ID") if r.returncode == 0 else None
+    return WEB_URL[kind].format(id=quote(file_id)) if file_id else None
 
 
 def destination(remote, folder, rel):

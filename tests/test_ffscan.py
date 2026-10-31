@@ -27,6 +27,11 @@ assert tokens_to_dict(parse_tokens(b"#ERRADF PE  ")) == {"ERR": [["ADF ", "PE  "
 jpg = b"\xff\xd8" + b"\xff\xe0\x00\x04\x00\x00" + b"\xff\xc0\x00\x0b\x08" + (3600).to_bytes(2, "big") + b"\x09\xf6\x01\x01\x11\x00" + b"\xff\xd9"
 out = fix_jpeg_height(jpg, 1263)
 assert out[13:15] == (1263).to_bytes(2, "big") and len(out) == len(jpg)  # SOF at 8, height at +5
+from ffscan.ff680w import holder
+
+assert holder(bytes.fromhex("0104000000")) is None  # free
+assert holder(bytes.fromhex("0104810001010110fe80000000000000000000000000abcd")) == "fe80::abcd"
+assert holder(bytes.fromhex("01048100010101040a000002")) == "10.0.0.2"
 from ffscan.ff680w import _longest_run
 F, T = False, True
 assert _longest_run([T, F, F, F, F, F, T, T, T, F, T, T, F, F, F, F, F, T]) == (6, 12)  # edge specks lose, 1-gap bridged
@@ -165,4 +170,10 @@ r = {"rotation": 0, "caption": "Kids at the beach.", "tags": ["beach"], "date_es
 assert to_metadata(r, {}) == {"description": "Kids at the beach.\nWritten on back: Seaside 1986", "date": "1986", "tags": "beach"}
 assert to_metadata(r, {"description": "typed", "date": "1990"}) == {"tags": "beach"}  # never overwrite the user
 assert to_metadata({**r, "back_text": "", "back_date": ""}, {})["tags"] == "beach, c. 1980s"  # decade -> tag
+# cloud web links: Dropbox from the path alone; providers without a file page give None
+from ffscan import cloud
+
+cloud.remote_type = lambda name: {"db": "dropbox", "s3": "s3"}[name]
+assert cloud.web_url("db:FastFoto/Summer 87/x 1.jpg") == "https://www.dropbox.com/home/FastFoto/Summer%2087?preview=x%201.jpg"
+assert cloud.web_url("s3:bucket/x.jpg") is None
 print("ok")

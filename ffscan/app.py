@@ -989,6 +989,16 @@ def analyze(body: dict):
     return {"queued": queued}
 
 
+@app.get("/api/cloud_link")
+def cloud_link(file: str):
+    """Web page of a photo's cloud copy (Google Drive, Google Photos, Dropbox, Box)."""
+    entry = read_ledger().get(str(safe_path(file)))
+    url = entry and cloud.web_url(entry["dest"])
+    if not url:
+        raise HTTPException(404, "this cloud service has no web page for single files")
+    return {"url": url}
+
+
 @app.post("/api/reveal")
 def reveal(body: dict):
     """Show the photo in Finder (selected in its folder)."""

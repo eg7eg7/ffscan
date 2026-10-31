@@ -289,6 +289,30 @@ def _scan_subnet():
     return None
 
 
+def _connect(host, port, timeout):
+    """TCP connection, IPv4 first. Bonjour names also resolve to IPv6 link-local addresses, which fail with
+    "No route to host" without an interface scope, and a session over IPv6 left a lock we couldn't see."""
+    try:
+        addrs = [a[4][0] for a in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)]
+    except socket.gaierror:
+        addrs = []
+    for ip in addrs:
+        try:
+            return socket.create_connection((ip, port), timeout=timeout)
+        except OSError:
+            pass
+    return socket.create_connection((host, port), timeout=timeout)
+
+
+def holder(hello):
+    """Address of the client that holds the scanner, from its 0x8000 hello, or None when it's free.
+    Busy hello payload: 01 04 81 00 01 01 01 <address length> <address bytes>."""
+    if len(hello) < 8 or len(hello) < 8 + hello[7] or hello[7] not in (4, 16):
+        return None
+    family = socket.AF_INET if hello[7] == 4 else socket.AF_INET6
+    return socket.inet_ntop(family, hello[8:8 + hello[7]])
+
+
 class FF680W:
     LOCK = bytes([0x01, 0xA0, 0x04, 0x00, 0x00, 0x01, 0x2C])  # as sent by Epson's client
     BLOCK_SIZE = 1 << 20  # #BSZ image block size: 1 MiB, the same default Epson's own engine sends
@@ -304,20 +328,26 @@ class FF680W:
             if not self.host:
                 raise ScannerError("no Epson scanner found on the network; is it on and on the same Wi-Fi?")
         try:
-            self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+            self.sock = _connect(self.host, self.port, self.timeout)
         except OSError:
             if not auto:
                 raise
             self.host = discover(refresh=True)  # the scanner may have a new address since it was found
             if not self.host:
                 raise ScannerError("the scanner is no longer on the network; is it on?")
-            self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+            self.sock = _connect(self.host, self.port, self.timeout)
         # request/reply protocol with small requests: don't let Nagle's algorithm hold them back
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        _recv_packet(self.sock)  # 0x8000 hello
+        _, hello = _recv_packet(self.sock)  # 0x8000 hello
         _send_packet(self.sock, 0x2100, self.LOCK)
-        if _recv_packet(self.sock) != (0xA100, b"\x06"):
-            raise ScannerError("scanner refused lock (in use by another client?)")
+        try:
+            locked = _recv_packet(self.sock) == (0xA100, b"\x06")
+        except OSError:  # a busy scanner resets the connection instead of answering
+            locked = False
+        if not locked:
+            who = holder(hello)
+            raise ScannerError(f"the scanner is in use by {who or 'another client'}. If nothing else is scanning, "
+                               "a previous session didn't release it: switch the scanner off and on.")
         if self._xfer(b"\x1cX", 1) != b"\x06":
             raise ScannerError("scanner did not enter ESC/I-2 mode")
         return self

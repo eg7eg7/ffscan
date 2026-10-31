@@ -716,6 +716,7 @@ function card(file, rotation) {
       <button data-a="upload" title="Upload this photo to the cloud account chosen under Cloud upload">☁ Upload</button>
       <button data-a="open" title="Open full size">Open</button>
       <button data-a="reveal" title="Show in Finder">Finder</button>
+      <button data-a="cloudlink" title="Open the uploaded copy in the cloud service" hidden>☁ View</button>
       <button data-a="delete" title="Move to the Trash">Delete</button>
     </div>`;
   el.querySelector("img").onclick = () => { el.classList.toggle("selected");
@@ -734,6 +735,10 @@ function card(file, rotation) {
         await post("/api/upload", { files: [file] });  // badge turns to "Uploading…" via the upload_queued event
       } else if (a === "reveal") {
         await post("/api/reveal", { file });
+      } else if (a === "cloudlink") {
+        const w = window.open("", "_blank");  // opened now: a window opened after the await would be blocked
+        try { w.location = (await api(`/api/cloud_link?file=${encodeURIComponent(file)}`)).url; }
+        catch (e) { w.close(); throw e; }
       } else if (a === "open") {
         window.open(fileUrl(file), "_blank");
       } else if (a === "delete" && confirm(`Move ${name} to the Trash?`)) {
@@ -783,6 +788,7 @@ function setCloud(file, state, dest) {
   if (!b) return;
   const [text, tip] = CLOUD[state] || CLOUD.null;
   b.textContent = text; b.title = tip(dest || ""); b.dataset.state = state || "none";
+  b.closest(".card").querySelector('[data-a="cloudlink"]').hidden = !(state === "uploaded" || state === "changed");
 }
 async function loadPhotos() {
   $("#grid").innerHTML = ""; selected.clear();
