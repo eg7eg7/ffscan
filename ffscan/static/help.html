@@ -165,6 +165,7 @@
   <tr><td>⟲ ⟳</td><td>Rotate 90° left or right (lossless).</td></tr>
   <tr><td>Enhance</td><td>Save an enhanced copy next to the photo; the original stays.</td></tr>
   <tr><td>Open</td><td>Show the full-size photo in a new tab.</td></tr>
+  <tr><td>Finder</td><td>Show the photo's file in Finder, selected in its folder.</td></tr>
   <tr><td>Delete</td><td>Moves the photo to the macOS Trash after a confirmation; put it back from the Trash if needed.</td></tr>
   <tr><td>Edit metadata…</td><td>Edit metadata of the selected photos.</td></tr>
   <tr><td>Upload</td><td>Upload the selected photos to the chosen cloud destination now.</td></tr>
@@ -207,7 +208,10 @@
 <p>When <strong>Analyse photos with Claude</strong> is on, every scanned picture is sent to Claude, Anthropic's AI model. This happens in the background while scanning continues. Claude:</p>
 <ul>
   <li><strong>Turns the photo upright</strong> only when the on-device rotation had no clear answer.</li>
-  <li>Writes a <strong>caption</strong> and <strong>tags</strong>. It never guesses people's names.</li>
+  <li>Writes a <strong>caption</strong> and <strong>tags</strong>. It never guesses people's names. The caption becomes the first
+    line of the photo's description (your batch description and any writing from the back follow it) and is also saved as
+    the photo's Headline. Analysing a photo again replaces the old caption.</li>
+  <li>Each print is analysed <strong>once</strong>, on the original scan; the enhanced copy gets the same results.</li>
   <li><strong>Estimates when</strong> the photo was taken from clothes, cars, print style and colour. A year goes into the date field; a decade becomes a tag like <code>c. 1980s</code>.</li>
   <li><strong>Guesses the place</strong> when it's recognisable.</li>
   <li><strong>Reads the back</strong> only when on-device reading found writing it couldn't read.</li>

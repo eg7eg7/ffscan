@@ -212,6 +212,7 @@ METADATA_TAGS = {
     "description": ["-XMP-dc:Description={}", "-EXIF:ImageDescription={}", "-IPTC:Caption-Abstract={}"],
     "album": ["-XMP-xmpDM:Album={}"],
     "place": ["-XMP-iptcCore:Location={}", "-IPTC:Sub-location={}"],
+    "headline": ["-XMP-photoshop:Headline={}", "-IPTC:Headline={}"],  # the AI caption on its own
 }
 
 
@@ -234,11 +235,12 @@ def write_metadata(path, md):
 
 def read_metadata(path):
     out = json.loads(run(["exiftool", "-j", "-Title", "-Description", "-Album", "-Location", "-PersonInImage",
-                          "-Subject", "-DateTimeOriginal", str(path)]))[0]
+                          "-Subject", "-DateTimeOriginal", "-Headline", str(path)]))[0]
     as_list = lambda v: ", ".join(v) if isinstance(v, list) else (v or "")
     return {"title": out.get("Title", ""), "description": out.get("Description", ""), "album": out.get("Album", ""),
             "place": out.get("Location", ""), "people": as_list(out.get("PersonInImage")),
-            "tags": as_list(out.get("Subject")), "date": str(out.get("DateTimeOriginal", ""))[:10].replace(":", "-")}
+            "tags": as_list(out.get("Subject")), "date": str(out.get("DateTimeOriginal", ""))[:10].replace(":", "-"),
+            "headline": out.get("Headline", "")}
 
 
 # ---------------------------------------------------------------- cloud upload (rclone)
@@ -497,10 +499,18 @@ def analyze_photo(path, files, raw_back, rotation_decided, s):
         raise RuntimeError(problem)
     result = photo_ai.analyze(path, back_with_writing(raw_back, s), provider=ai["provider"], project=ai["project"],
                               region=ai["region"], model=ai["model"])
-    existing = read_metadata(path)  # may hold text read from the back on-device
+    existing = read_metadata(path)  # batch description and text read from the back on-device
     md = photo_ai.to_metadata(result, {**s["metadata"], "date": s["metadata"]["date"] or existing["date"]})
-    if existing["description"] and not s["metadata"]["description"]:  # keep the back's text after the caption
-        md["description"] = result["caption"] + "\n" + existing["description"]
+    # the caption always goes in: first line of the description (before the batch description and back text)
+    # and on its own as the Headline. A previous caption is replaced, not stacked, when a photo is re-analysed.
+    rest = existing["description"]
+    if existing["headline"] and rest.startswith(existing["headline"]):
+        rest = rest[len(existing["headline"]):].lstrip("\n")
+    parts = [result["caption"], rest]
+    if result["back_text"] and result["back_text"] not in rest:
+        parts.append("Written on back: " + result["back_text"])
+    md["description"] = "\n".join(p for p in parts if p)
+    md["headline"] = result["caption"]
     # on-device rotation (faces, or a confident scene classifier) wins; Claude decides only when it had no opinion
     rotation = None if rotation_decided or not s["auto_rotate"] else result["rotation"]
     for f in files:
@@ -940,11 +950,19 @@ def analyze(body: dict):
     problem = ai_setup_problem(s["ai"])
     if problem:
         raise HTTPException(400, problem)
-    queued = 0
+    queued, seen = 0, set()
     for f in body["files"]:
         p = safe_path(f)
-        if p.stem.endswith(("_back", "_enhanced")):
+        if p.stem.endswith("_back") or not dupes.is_picture(p) and not p.stem.endswith("_enhanced"):
             continue
+        if p.stem.endswith("_enhanced"):  # one AI call per photo: analyse the original, results go to both
+            original = original_of(p, s)
+            if not original:
+                continue
+            p = original
+        if p in seen:
+            continue
+        seen.add(p)
         files = [p] + [x for x in [enhanced_path(p, s)] if x.exists()]
         back = p.with_name(p.stem + "_back.jpg")
         # an existing rotation (faces or the user) wins over the AI's guess
@@ -952,6 +970,16 @@ def analyze(body: dict):
                         "rotation_decided": get_rotation(p) != 0, "s": s})
         queued += 1
     return {"queued": queued}
+
+
+@app.post("/api/reveal")
+def reveal(body: dict):
+    """Show the photo in Finder (selected in its folder)."""
+    try:
+        run(["open", "-R", str(safe_path(body["file"]))])
+    except FileNotFoundError:
+        raise HTTPException(501, "Show in Finder needs macOS")
+    return {"revealed": True}
 
 
 @app.post("/api/delete")

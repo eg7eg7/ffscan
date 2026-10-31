@@ -714,6 +714,7 @@ function card(file, rotation) {
       <button data-a="enhance" title="Save an enhanced copy">Enhance</button>
       <button data-a="upload" title="Upload this photo to the cloud account chosen under Cloud upload">☁ Upload</button>
       <button data-a="open" title="Open full size">Open</button>
+      <button data-a="reveal" title="Show in Finder">Finder</button>
       <button data-a="delete" title="Move to the Trash">Delete</button>
     </div>`;
   el.querySelector("img").onclick = () => { el.classList.toggle("selected");
@@ -730,6 +731,8 @@ function card(file, rotation) {
         log(`Enhanced copy: ${r.file.split("/").pop()} (${r.steps.join(", ") || "no fixes ticked"})`);
       } else if (a === "upload") {
         await post("/api/upload", { files: [file] });  // badge turns to "Uploading…" via the upload_queued event
+      } else if (a === "reveal") {
+        await post("/api/reveal", { file });
       } else if (a === "open") {
         window.open(fileUrl(file), "_blank");
       } else if (a === "delete" && confirm(`Move ${name} to the Trash?`)) {
