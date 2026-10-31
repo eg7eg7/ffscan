@@ -80,6 +80,8 @@ Order matters:
 - Keep polling `IMG` while it returns empty. Stopping early aborts the page, and the scanner reports a jam.
 - The JPEG SOF carries the *requested* height; `fix_jpeg_height` patches it to the `#pen` height.
 - The scanner sends at most `reply_len` bytes per request; pull bodies with empty `0x2000` requests.
+  Never ask for header and body in one reply (`reply_len` > 64 on a command): the scanner stops answering and
+  keeps the session locked even after the connection drops, until it is switched off and on.
 - Hardware crop (`CRP `) is a no-op; crop is done in software (`find_photo_box`).
 - Sample the crop background 1.5–3% in from the edges: the outermost columns of 300 dpi scans differ.
 - Pure-white pixels (≥ 250) are deskew corner fill, not photo.

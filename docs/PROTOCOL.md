@@ -46,7 +46,9 @@ offset  0  'I' 'S'
 | `0x2000` | → | ESC/I data. Payload = `data_len (u32)` + `reply_len (u32)` + data. Reply `0xA000`. |
 
 **The scanner never sends more than `reply_len` bytes.** To read a reply body you send another `0x2000`
-packet with no data and `reply_len` = the number of bytes still wanted.
+packet with no data and `reply_len` = the number of bytes still wanted. A command sent with `reply_len` larger
+than the 64-byte header (to get header and body in one go) is never answered, and the scanner then stays locked
+to that client until it is switched off and on: every block costs two round trips.
 
 After locking, send `1C 58` (FS X) with `reply_len` 1: the scanner answers `06` and switches to ESC/I-2.
 
