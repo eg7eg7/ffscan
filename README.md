@@ -212,6 +212,14 @@ The app listens on `127.0.0.1` only, so it isn't reachable from other devices. E
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for planned work.
 
+## How it was built
+
+The scanner protocol was reverse-engineered with the help of [REA](https://github.com/morluto/rea), a
+reverse-engineering skill and MCP server for AI coding agents, used here with Claude Code. REA was used to
+inventory Epson's macOS software, find the scanner's command classes and transports, and guide the
+disassembly that revealed the message framing. The findings were then confirmed against a real scanner with
+read-only probes. The full write-up is in [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
 ## Disclaimer
 
 ffscan is an independent project, not affiliated with or endorsed by Seiko Epson Corporation. *Epson* and

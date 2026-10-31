@@ -156,6 +156,8 @@ full 8.5″ width, with the height as the longest photo you expect.
 
 ## Method
 
+The analysis was done with Claude Code and the [REA](https://github.com/morluto/rea) reverse-engineering skill.
+
 1. **Static analysis** of Epson Scan 2 6.7.84 on macOS (`Scanner.framework`, `ScanEngine.framework`): class
    and method names, format strings such as `x%07lX`, `i%07d`, `d%03u`, `h%03X`, and disassembly of
    `-[ESCI2Scanner sendRequest:paramBlock:]`, which writes the 12-byte header and expects a 64-byte reply.
