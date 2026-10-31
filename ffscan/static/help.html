@@ -38,7 +38,7 @@
 <body>
 <div class="wrap">
 <header>
-  <div><h1>FF-680W Scanner help</h1><div class="muted">Everything the app does, and what each setting means.</div></div>
+  <div style="display:flex;align-items:center;gap:12px"><img src="logo.svg" alt="" width="40" height="40"><div><h1>FF-680W Scanner help</h1><div class="muted">Everything the app does, and what each setting means.</div></div></div>
   <a href="/">← Back to the scanner</a>
 </header>
 
@@ -48,6 +48,7 @@
   <li><a href="#save">Where photos are saved</a></li>
   <li><a href="#scan">Scan settings</a></li>
   <li><a href="#metadata">Metadata</a></li>
+  <li><a href="#import">Importing from Epson FastFoto</a></li>
   <li><a href="#photos">Working with scanned photos</a></li>
   <li><a href="#cloud">Cloud upload</a></li>
   <li><a href="#ai">AI analysis</a></li>
@@ -65,9 +66,8 @@
     photos, pre-filled from the last batch: change them, press <strong>Clear</strong> for a fresh batch, then <strong>Start scan</strong>.
     Untick <em>Ask before every scan</em> to skip it (turn it back on under Batch metadata).</li>
   <li>While the scanner feeds, it has the computer and the network to itself: cropping, enhancing, AI analysis and uploads
-    wait, then run as soon as the stack is through.</li>
-  <li>The scanner feeds at full speed; cropping, enhancing and metadata happen in the background,
-    and photos appear in the grid as each one is ready. The status line shows how many are scanned and processed.</li>
+    wait, then run in the background as soon as the stack is through. Photos appear in the grid as each one is ready;
+    the status line shows how many are scanned and processed.</li>
   <li>When the feeder is empty the scan ends by itself, unless <em>Keep scanning as I load more photos</em> is on. Press <strong>Stop</strong> at any time; the photo in progress is ejected and the scan cancelled cleanly.</li>
 </ol>
 <p class="tip">Settings are remembered between sessions. Change them only when a batch needs something different.</p>
@@ -113,7 +113,7 @@
   <dt>Skip backs with no writing</dt>
   <dd>With backs being saved, throws away backs that have nothing written on them. Faint paper-maker watermarks (Kodak, Fuji, DNP) and printed lab codes count as blank. Handwriting, stamps and stickers are kept.</dd>
   <dt>Crop to photo</dt>
-  <dd>The scanner always captures its full 8.5″ width, so a photo sits on a grey background. This trims the background so the file is just the photo. Turn it off to keep the full scan.</dd>
+  <dd>The scanner always captures its full 8.5″ width, so a photo sits on a grey background. This trims the background so the file is just the photo, straightens prints that went through at a slight tilt, and trims the shadow along their edges. Turn it off to keep the full scan.</dd>
   <dt>Straighten (deskew)</dt>
   <dd>The scanner straightens photos that fed in at a slight angle. The corners it fills in are trimmed by <em>Crop to photo</em>.</dd>
   <dt>Auto-rotate</dt>
@@ -186,7 +186,9 @@
   <tr><td>Finder</td><td>Show the photo's file in Finder, selected in its folder.</td></tr>
   <tr><td>Delete</td><td>Moves the photo to the macOS Trash after a confirmation; put it back from the Trash if needed.</td></tr>
   <tr><td>Edit metadata…</td><td>Edit metadata of the selected photos.</td></tr>
-  <tr><td>Upload</td><td>Upload the selected photos to the chosen cloud destination now.</td></tr>
+  <tr><td>☁ Upload</td><td>Upload this photo to the chosen cloud destination now. <strong>Upload selected</strong> does the same for the selected photos, <strong>☁ Upload new</strong> for every photo not in the cloud yet or changed since.</td></tr>
+  <tr><td>☁ View</td><td>Open the uploaded copy in the cloud service (shown once a photo is uploaded).</td></tr>
+  <tr><td>Analyse</td><td>Analyse the selected photos with Claude (see <a href="#ai">AI analysis</a>).</td></tr>
   <tr><td>Cloud badge (top right)</td><td><strong>Uploaded</strong>: in the cloud (hover for where). <strong>Changed</strong>: edited after uploading (rotated, new metadata), so upload again to replace the cloud copy. <strong>Uploading…</strong>, <strong>Failed</strong>, or <strong>Not uploaded</strong>.</td></tr>
 </table>
 <h3>Duplicates</h3>
@@ -256,7 +258,7 @@
 <dl>
   <dt>Connection (under Advanced)</dt>
   <dd><strong>Automatic</strong> uses <strong>USB</strong> when the scanner is plugged into this Mac and Wi-Fi otherwise.
-    <strong>USB only</strong> and <strong>Wi-Fi only</strong> force one. USB is much faster at 600 dpi: the data of
+    <strong>USB only</strong> and <strong>Wi-Fi only</strong> force one. On Automatic, typing a <em>Wi-Fi address</em> means Wi-Fi is used. USB is much faster at 600 dpi: the data of
     a side moves in about 0.3 s, against about 4.5 s over Wi-Fi. The status line at the top shows which one is in use.</dd>
   <dt>Wi-Fi address (under Advanced)</dt>
   <dd>Leave it empty and the app finds the scanner on your network automatically. If that fails, type the scanner's
@@ -264,20 +266,20 @@
     show its network status, or check your router's device list.</dd>
   <dt>Status line</dt>
   <dd>Shows whether the scanner is ready, scanning, out of photos or jammed. Press <strong>Refresh</strong> to check again.
-    Model, serial number and firmware appear under <em>Address</em> once connected.</dd>
+    Model, serial number and firmware appear under <em>Wi-Fi address</em> once connected.</dd>
 </dl>
 <p class="tip">Only one app can use the scanner at a time. Quit Epson FastFoto, Epson ScanSmart and Epson Scan 2 while using this app.</p>
 
 <h2 id="trouble">Troubleshooting</h2>
 <table>
   <tr><th>Message or problem</th><th>What to do</th></tr>
-  <tr><td>Cannot reach scanner</td><td>Check the scanner is on and its Wi-Fi light is steady. Try its IP address under <em>Advanced → Address</em>. Wait a few seconds after waking it from sleep, then Refresh.</td></tr>
+  <tr><td>Cannot reach scanner</td><td>Check the scanner is on and its Wi-Fi light is steady, or plug it in with its USB cable. Try its IP address under <em>Advanced → Wi-Fi address</em>. Wait a few seconds after waking it from sleep, then Refresh.</td></tr>
   <tr><td>Feeder is empty</td><td>Push the photos in until they stop, face up. Then Refresh.</td></tr>
   <tr><td>Paper jam</td><td>Open the scanner cover, remove the photo, close the cover, then scan again. Photos already saved are kept.</td></tr>
   <tr><td>Scanner refused lock</td><td>Another program is using the scanner: quit Epson's software and try again.</td></tr>
   <tr><td>Scan stops on a photo that isn't doubled</td><td>Set <em>Double-feed detection</em> to Off for that photo, or press the scanner's double-feed skip button.</td></tr>
   <tr><td>Grey border left around a photo</td><td>Very dark or grey-edged photos can confuse cropping. Untouched originals of the last 300 scans are kept in <code>~/Library/Caches/FF680W/raw</code>.</td></tr>
-  <tr><td>Photo is sideways or upside down</td><td>Use ⟲ ⟳. Auto-rotate only works on photos with faces.</td></tr>
+  <tr><td>Photo is sideways or upside down</td><td>Use ⟲ ⟳. Auto-rotate leaves a photo as scanned when it isn't sure; with AI analysis on, Claude decides those.</td></tr>
   <tr><td>Uploads fail</td><td>Run <code>rclone lsd &lt;remote&gt;:</code> in Terminal to check the account still works. Google Drive may need <code>rclone config reconnect &lt;remote&gt;:</code>.</td></tr>
 </table>
 
@@ -287,7 +289,8 @@
   <tr><td>Your settings</td><td><code>~/Library/Application Support/FF680W/settings.json</code>. Delete it to reset everything.</td></tr>
   <tr><td>Untouched recent scans</td><td><code>~/Library/Caches/FF680W/raw</code>, the last 300 sides. macOS may clear these.</td></tr>
   <tr><td>Cloud accounts</td><td><code>~/.config/rclone/rclone.conf</code></td></tr>
-  <tr><td>Starting the app</td><td><code>./run.sh</code> in the project folder, then open <a href="/">http://localhost:8680</a></td></tr>
+  <tr><td>Starting the app</td><td>Double-click <strong>FFScan</strong> on the Desktop (made once with <code>tools/make-desktop-app.sh</code>), or run <code>./run.sh</code> in the project folder. The page is <a href="/">http://localhost:8680</a>.</td></tr>
+  <tr><td>App log (started from the Desktop icon)</td><td><code>~/Library/Logs/ffscan.log</code></td></tr>
 </table>
 <footer class="muted"><span class="version"></span></footer>
 </div>
