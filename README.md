@@ -210,7 +210,8 @@ The app listens on `127.0.0.1` only, so it isn't reachable from other devices. E
 - Tested with the FF-680W over Wi-Fi. USB and the scanner's own Scan button aren't supported yet.
 - Without AI analysis, auto-rotate only handles photos with faces.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for planned work.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for planned work, and the [project board](https://github.com/users/eg7eg7/projects/5) and
+[issues](https://github.com/eg7eg7/ffscan/issues) for what's being worked on.
 
 ## How it was built
 

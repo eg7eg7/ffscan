@@ -1,5 +1,7 @@
 # Roadmap
 
+Day-to-day tracking happens on the [project board](https://github.com/users/eg7eg7/projects/5): every item below is an issue there.
+
 ## Done
 
 - **Scanner protocol:** ESC/I-2 over Epson's "IS" network framing (see [PROTOCOL.md](PROTOCOL.md)).

@@ -3,6 +3,12 @@
 Guidance for AI coding agents (and humans) working on ffscan, an open-source scanning app for the Epson
 FastFoto FF-680W. Read README.md for what the app does, and docs/PROTOCOL.md before touching scanner code.
 
+## Tracking work
+
+Tasks live as issues on the [project board](https://github.com/users/eg7eg7/projects/5) (Status: Backlog → Ready → In progress →
+Done; labels `area:*`, `feature`, `bug`, `needs-testing`, `blocked`). When you finish a task, close its issue
+and set Status to Done; when you discover new work, open an issue with labels. Keep `docs/ROADMAP.md` in sync.
+
 ## Ground rules
 
 - **This repository is public. Never commit anything personal:** scanner serial numbers or hostnames
