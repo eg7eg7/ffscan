@@ -159,8 +159,8 @@
       <select data-key="color"><option value="C024">Colour</option><option value="M008">Greyscale</option></select></label>
     <label data-tip="Fast: load the photos face DOWN; the scanner then sends only the picture, about twice as fast, but backs aren't read. Otherwise load face up: the scanner reads both sides in one pass. Picture only saves just the image. Picture and back also saves the back (dates or notes written on it). Back only saves just the backs.">Sides
       <select data-key="sides">
-        <option value="picture">Picture only</option>
-        <option value="fast">Picture only, fast (load face DOWN)</option>
+        <option value="picture">Picture only (load face up)</option>
+        <option value="fast">Picture only, fast (load face DOWN, single-sided)</option>
         <option value="both">Picture and back</option>
         <option value="back">Back only</option>
       </select></label>
@@ -409,7 +409,7 @@ function showVersion(v) {
 }
 
 // ---------- collapsible sections: one-line summary of current values, open/closed remembered per viewer
-const SIDES = { picture: "picture only", both: "picture + back", back: "back only" };
+const SIDES = { picture: "picture only", fast: "fast, face down", both: "picture + back", back: "back only" };
 function updateSummaries() {
   const s = settings, on = (v, t) => (v ? t : null), join = a => a.filter(Boolean).join(" · ");
   const sums = {

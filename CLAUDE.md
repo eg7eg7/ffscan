@@ -75,6 +75,7 @@ Order matters:
 ## Scanner facts that cost time to learn
 
 - Photos load face up: **side B is the picture**, side A the back of the print. A is sent first.
+  Single-sided scans read only side A (face down). `PARB` always answers `#parFAIL`: no per-side settings.
 - Keep polling `IMG` while it returns empty. Stopping early aborts the page, and the scanner reports a jam.
 - The JPEG SOF carries the *requested* height; `fix_jpeg_height` patches it to the `#pen` height.
 - The scanner sends at most `reply_len` bytes per request; pull bodies with empty `0x2000` requests.

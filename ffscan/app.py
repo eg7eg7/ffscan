@@ -428,6 +428,13 @@ def process_page(page, raw, name, s, out_dir, back_raw=None):
             path.unlink()
             emit("skipped", index=page.index, side=page.side, reason=f"blank back (ink {ink:.3f})")
             return None
+    # fast mode reads only the face-down side: a blank one means the prints went in face up (measured: backs
+    # ~0.002 ink, pictures 0.14+), so don't save the back as the picture
+    if s["sides"] == "fast" and s["crop"] and ff680w.ink_fraction(ff680w._thumbnail(str(path))) < s["blank_threshold"]:
+        path.unlink()
+        emit("skipped", index=page.index, side=page.side,
+             reason="was the back of the print: Fast mode reads only the side facing down, so load photos face DOWN")
+        return None
     duplicate_of = None
     if page.side == "B" and s["duplicates"] != "off":
         root = Path(s["folder"]).expanduser()

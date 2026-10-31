@@ -142,6 +142,11 @@ full 8.5″ width, with the height as the longest photo you expect.
 - **Fix the JPEG height.** The JPEG's SOF header carries the *requested* `#ACQ` height. Patch it to the
   height from `#pen`, or every image gets a long blank bottom.
 - **Sides.** Photos load face up, so **side B (`IMGB`) is the picture** and side A is the back of the print.
+  A single-sided scan (no `DPLX`) reads only side A, the side facing down: to get just the pictures that way,
+  load the prints face down.
+- **No per-side settings.** `PARB` (settings for the second side) exists but answers `#parFAIL` to every
+  parameter set, even one identical to `PARA`, and `CAPB` is empty: both sides of a duplex scan always share
+  resolution, colour and quality.
 - **Hardware crop** (`CRP `) is accepted but has no visible effect. ffscan crops in software, as Epson's
   own software does (`ESSWAutoSize` in its model file).
 - **Photos added mid-scan:** a print added after `#lftd000` isn't fed; start a new `TRDT`.
