@@ -129,6 +129,7 @@
   <span id="status">Checking scanner…</span>
   <a href="help.html" target="_blank" class="btn">Help</a>
   <button id="refresh" title="Check scanner status">Refresh</button>
+  <button id="importFF" title="Process photos already saved by Epson's FastFoto app as if they had just been scanned: crop is skipped, everything else (rotation, enhancement, duplicates, metadata, AI, upload) runs">Import from FastFoto…</button>
   <button id="scan" class="primary">Scan</button>
   <button id="stop" disabled>Stop</button>
 </header>
@@ -242,6 +243,7 @@
       <button id="selAll">Select all</button>
       <button id="editMeta" disabled>Edit metadata…</button>
       <button id="analyzeSel" disabled title="Analyse the selected photos with Claude (rotation, caption, tags, date, place)">Analyse</button>
+      <button id="analyzeRest" title="Analyse every photo that has no AI caption yet (e.g. after topping up credit)">Analyse remaining</button>
       <button id="uploadSel" disabled title="Upload the selected photos">Upload selected</button>
       <button id="uploadNew" title="Upload every photo that isn't in the cloud yet or was changed since it was uploaded">☁ Upload new</button>
       <button id="selDupes" title="Select every photo marked Duplicate (later scans of a print you already have)">Select duplicates</button>
@@ -315,7 +317,7 @@
 
 <dialog id="batchDialog">
   <form method="dialog" id="batchForm">
-    <h3 style="margin-top:0">New batch</h3>
+    <h3 style="margin-top:0" id="batchTitle">New batch</h3>
     <div class="hint">Written into every photo of this batch. Pre-filled from the last batch: check or clear before scanning.</div>
     <label>Album <input type="text" name="album" placeholder="e.g. Grandma 1985 (also the folder name)"></label>
     <label>File names <input type="text" name="name_prefix" placeholder="scan time, e.g. 20261031-101500"></label>
@@ -328,7 +330,19 @@
     <label class="row"><input type="checkbox" name="ask_before_scan" checked> Ask before every scan</label>
     <div class="toolbar" style="margin-top:12px">
       <button value="clear" type="button" id="batchClear">Clear</button><span class="spacer"></span>
-      <button value="cancel">Cancel</button><button value="start" class="primary">Start scan</button></div>
+      <button value="cancel">Cancel</button><button value="start" class="primary" id="batchGo">Start scan</button></div>
+  </form>
+</dialog>
+
+<dialog id="creditDialog">
+  <form method="dialog">
+    <h3 style="margin-top:0">Out of Anthropic API credit</h3>
+    <p>AI analysis stopped: the Anthropic account has no credit left. The photos are saved; they just have no
+      AI caption, tags or date yet. Remaining photos in the queue were skipped, not charged.</p>
+    <p><a href="https://platform.claude.com/dashboard" target="_blank" rel="noopener">Top up credit at platform.claude.com ↗</a></p>
+    <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
+      <button value="later">Later</button>
+      <button value="resume" class="primary" title="Analyse every photo that has no AI caption yet">I've topped up: analyse remaining</button></div>
   </form>
 </dialog>
 
@@ -692,20 +706,35 @@ $("#batchClear").onclick = () => {
   [...BATCH_FIELDS, "name_prefix"].forEach(k => { f[k].value = ""; });
   batchPreview(); f.album.focus();
 };
-$("#scan").onclick = () => {
-  if (!settings.ask_before_scan) return startScan();
+// batch details before a scan or an import; `imp` = {folder, count, name} for a FastFoto import
+function batchDialog(start, imp = null) {
   const d = $("#batchDialog"), f = $("#batchForm").elements;
   BATCH_FIELDS.forEach(k => { f[k].value = settings.metadata?.[k] || ""; });
+  if (imp) f.album.value = imp.name;  // FastFoto's folder name is usually the album
   f.name_prefix.value = settings.name_prefix || ""; f.ask_before_scan.checked = true;
+  $("#batchTitle").textContent = imp ? `Import ${imp.count} photo(s) from “${imp.name}”` : "New batch";
+  $("#batchGo").textContent = imp ? "Start import" : "Start scan";
+  f.ask_before_scan.closest("label").hidden = !!imp;
   batchPreview(); d.showModal(); f.album.focus();
   d.onclose = async () => {
     if (d.returnValue !== "start") return;
     const metadata = Object.fromEntries(BATCH_FIELDS.map(k => [k, f[k].value.trim()]));
     settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(
-      { metadata, name_prefix: f.name_prefix.value.trim(), ask_before_scan: f.ask_before_scan.checked }) });
+      { metadata, name_prefix: f.name_prefix.value.trim(), ...(imp ? {} : { ask_before_scan: f.ask_before_scan.checked }) }) });
     render();
-    startScan();
+    start();
   };
+}
+$("#scan").onclick = () => settings.ask_before_scan ? batchDialog(startScan) : startScan();
+$("#importFF").onclick = async () => {
+  try {
+    const imp = await post("/api/import/pick");
+    if (!imp.folder) return;  // cancelled
+    if (!imp.count) return log(`No photos found in ${imp.folder}`, true);
+    batchDialog(async () => {
+      try { await post("/api/import", { folder: imp.folder }); } catch (e) { log(e.message, true); }
+    }, imp);
+  } catch (e) { log(e.message, true); }
 };
 $("#stop").onclick = () => post("/api/cancel");
 
@@ -835,6 +864,12 @@ $("#editMeta").onclick = async () => {
     log(`Metadata saved to ${r.updated} photo(s)`);
   };
 };
+async function analyseRemaining() {
+  try { const r = await post("/api/analyze", { pending: true }); log(r.queued ? `Analysing ${r.queued} photo(s) without an AI caption…` : "Every photo already has an AI caption."); }
+  catch (e) { log(e.message, true); }
+}
+$("#analyzeRest").onclick = analyseRemaining;
+$("#creditDialog").onclose = () => { if ($("#creditDialog").returnValue === "resume") analyseRemaining(); };
 $("#analyzeSel").onclick = async () => {
   try { const r = await post("/api/analyze", { files: [...selected] }); log(`Analysing ${r.queued} photo(s)…`); }
   catch (e) { log(e.message, true); }
@@ -917,6 +952,8 @@ function handleEvent(e) {
       if (age < 5) log(`Analysed ${e.file.split("/").pop()}: ${e.caption}${e.rotation ? ` (rotated ${e.rotation}°)` : ""}`);
       break;
     }
+    case "ai_no_credit": if (age < 5 && !$("#creditDialog").open) $("#creditDialog").showModal(); break;
+    case "import_started": log(`Importing ${e.count} photo(s) from ${e.source} into ${e.folder}`); break;
     case "ai_failed": log(`AI analysis failed (${e.file.split("/").pop()}): ${e.error}`, true); break;
     case "remote_connecting":
       $("#connectStatus").textContent = e.oauth

@@ -140,6 +140,15 @@ with tempfile.TemporaryDirectory() as tmp:
     assert app.original_of(e, st) == kept
     assert app.next_number(album, "Summer 87") == 7  # numbering sees Originals/ and Enhanced/ too
 
+# FastFoto import: originals with their backs; Epson's enhanced "_a" copies only when there's no original
+with tempfile.TemporaryDirectory() as tmp:
+    d = Path(tmp)
+    (d / "Al").mkdir()
+    for n in ("F_0001.jpg", "F_0001_a.jpg", "F_0002.jpg", "F_0002_b.jpg", "Al/F_0001.jpg", "Al/F_0001_a.jpg", "G_0003_a.jpg"):
+        (d / n).write_bytes(b"")
+    found = [(str(p.relative_to(d)), b and str(b.relative_to(d))) for p, b in app.fastfoto_photos(d)]
+    assert found == [("Al/F_0001.jpg", None), ("F_0001.jpg", None), ("F_0002.jpg", "F_0002_b.jpg"), ("G_0003_a.jpg", None)], found
+
 # dates written on the backs of prints
 assert app.date_from_text("Seaside, summer 1986") == "1986"
 assert app.date_from_text("14.7.1986 grandma") == "1986-07-14"       # day first (European)

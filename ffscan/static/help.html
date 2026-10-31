@@ -164,6 +164,17 @@
   To change photos afterwards, click their thumbnails to select them, then press <strong>Edit metadata…</strong>.
   In that dialog, empty fields are left unchanged, and people and tags are added to the ones already there.</p>
 
+<h2 id="import">Importing photos from Epson FastFoto</h2>
+<p><strong>Import from FastFoto…</strong> (top right) takes photos you already scanned with Epson's FastFoto app and runs
+  them through ffscan as if they had just been scanned: the same batch details dialog, then rotation, enhanced copy,
+  duplicate check, metadata, AI analysis and upload. Only cropping is skipped (FastFoto already cropped them).</p>
+<ul>
+  <li>Choose FastFoto's folder (usually <code>Pictures/FastFoto/photos_jpeg</code>) or one album inside it; subfolders are included.</li>
+  <li>FastFoto saves <code>Name_0001.jpg</code> (the scan), <code>Name_0001_a.jpg</code> (its enhanced copy) and
+    <code>Name_0001_b.jpg</code> (the back). ffscan imports the scan and its back, and makes its own enhanced copy.</li>
+  <li>The album name starts as the folder's name. FastFoto's files are copied, never changed or moved.</li>
+</ul>
+
 <h2 id="photos">Working with scanned photos</h2>
 <table>
   <tr><th>Action</th><th>What it does</th></tr>
@@ -211,6 +222,9 @@
 </ol>
 
 <h2 id="ai">AI analysis (Claude)</h2>
+<p><strong>Out of credit?</strong> If the Anthropic account runs out, analysis stops and a message links to the page
+  where you top up; the rest of the queue is skipped, not charged. After topping up, press <strong>Analyse
+  remaining</strong> (above the photos): it analyses every photo that has no AI caption yet.</p>
 <p>When <strong>Analyse photos with Claude</strong> is on, every scanned picture is sent to Claude, Anthropic's AI model. This happens in the background while scanning continues. Claude:</p>
 <ul>
   <li><strong>Turns the photo upright</strong> only when the on-device rotation had no clear answer.</li>

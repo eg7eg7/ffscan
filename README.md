@@ -41,7 +41,10 @@ organised into albums, tagged and optionally uploaded to the cloud.
   so Apple Photos, Google Photos and Lightroom can search and sort them.
 - **AI analysis (optional):** Claude writes a caption (added to the photo's description) and tags, estimates the
   year and guesses the place, with one request per print (~2 cents with Claude Opus 5.5). It never overwrites what
-  you typed, and handles rotation or backs only where the on-device methods had no answer.
+  you typed, and handles rotation or backs only where the on-device methods had no answer. If the account runs
+  out of credit, the queue pauses and *Analyse remaining* finishes the job after a top-up.
+- **Import from Epson FastFoto:** photos already scanned with Epson's app go through the same pipeline
+  (rotation, enhancement, duplicates, metadata, AI, upload), with their backs.
 - **Cloud upload** to Google Drive, Google Photos, Dropbox, OneDrive or Amazon S3 (and S3-compatible services),
   set up entirely in the app. It includes a folder browser, a progress bar and an *Uploaded* badge on every photo.
 - **Duplicate detection:** a visual fingerprint spots a print you've already scanned, even at another

@@ -385,9 +385,13 @@ def next_number(batch_dir, prefix):
     return max(used, default=0)
 
 
+def page_name(prefix, number, side):
+    return f"{prefix}_{number:03d}{'' if side == 'B' else '_back'}.jpg"
+
+
 def save_raw(page, prefix, offset):
     """The only work done while the scanner is feeding: write the untouched scan to disk (milliseconds)."""
-    name = f"{prefix}_{offset + page.index + 1:03d}{'' if page.side == 'B' else '_back'}.jpg"
+    name = page_name(prefix, offset + page.index + 1, page.side)
     RAW_DIR.mkdir(parents=True, exist_ok=True)  # untouched scans also let crop/rotate bugs be reprocessed
     raw = RAW_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{name}"  # unique even with a fixed prefix
     raw.write_bytes(page.jpeg)
@@ -537,18 +541,26 @@ def analyze_photo(path, files, raw_back, rotation_decided, s):
     return result
 
 
+NO_CREDIT = threading.Event()  # set when the Anthropic account ran out: the rest of the queue is skipped, not sent
+
+
 def ai_worker():
     while True:
         job_id, j = JOBS.queue("ai").get()
         wait_for_scanner()
         path, files, s, error = Path(j["path"]), [Path(f) for f in j["files"]], j["s"], None
         try:
+            if NO_CREDIT.is_set():
+                raise RuntimeError("skipped: no API credit")  # "Analyse remaining" picks it up after a top-up
             analyze_photo(path, files, j["raw_back"], j["rotation_decided"], s)
         except Exception as e:  # keep the queue alive; the photo is already saved without AI metadata
             error = str(e)
             if "credit balance is too low" in error:
-                error = "the Anthropic account has no API credit: top it up at https://platform.claude.com/dashboard"
-            emit("ai_failed", file=str(path), error=error[:300])
+                NO_CREDIT.set()
+                error = "the Anthropic account has no API credit"
+                emit("ai_no_credit")
+            if not error.startswith("skipped"):
+                emit("ai_failed", file=str(path), error=error[:300])
         queue_uploads([f for f in files if f.exists()], s)
         JOBS.finish(job_id, error)
 
@@ -648,6 +660,45 @@ def scan_job(s):
                 emit("processing_done", saved=stats["saved"])
 
 
+def fastfoto_photos(folder):
+    """(picture, back or None) pairs in an Epson FastFoto folder, in name order, subfolders included.
+
+    FastFoto saves Name_0001.jpg (the scan), Name_0001_a.jpg (its enhanced copy) and Name_0001_b.jpg (the back).
+    The enhanced copies are skipped: the pipeline makes its own from the original.
+    """
+    files = {f.with_suffix(""): f for f in Path(folder).expanduser().rglob("*") if f.suffix.lower() in (".jpg", ".jpeg")}
+    out = []
+    for key, f in sorted(files.items(), key=lambda kv: str(kv[0]).lower()):
+        base = key.with_name(re.sub(r"_[ab]$", "", key.name))
+        if key == base or (key.name.endswith("_a") and base not in files):  # an original, or an enhanced copy alone
+            out.append((f, files.get(base.with_name(base.name + "_b"))))
+    return out
+
+
+def import_job(folder, s):
+    """Feed photos from Epson's FastFoto app through the same pipeline as a scan (no scanner involved)."""
+    photos = fastfoto_photos(folder)
+    # already cropped by FastFoto; fast mode's face-down check only makes sense for real scans
+    s = {**s, "crop": False, "sides": "picture" if s["sides"] == "fast" else s["sides"]}
+    batch_dir = Path(s["folder"]).expanduser() / (s["metadata"]["album"].strip() or Path(folder).name)
+    out_dir = batch_dir / "Originals" if s["enhance_location"] == "split" else batch_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    prefix = file_prefix(s, time.strftime("%Y%m%d-%H%M%S"))
+    offset, batch = next_number(batch_dir, prefix), f"{time.time():.6f}"
+    sides = ["A", "B"] if s["sides"] in ("both", "back") else ["B"]
+    jobs_ = [(i, side, back if side == "A" else picture, back) for i, (picture, back) in enumerate(photos)
+             for side in sides if side == "B" or back]
+    PROGRESS[batch] = {"scanned": len(jobs_), "processed": 0, "saved": 0, "scan_done": True}
+    emit("import_started", folder=str(batch_dir), source=str(folder), count=len(photos))
+    for i, side, raw, back in jobs_:
+        # the source files are only read (copied into the album), never changed
+        JOBS.put("process", {"index": i, "side": side, "raw": str(raw), "name": page_name(prefix, offset + i + 1, side),
+                             "s": s, "out_dir": str(out_dir), "back_raw": back and str(back), "batch": batch})
+    if not jobs_:
+        emit("processing_done", saved=0)
+    return len(photos)
+
+
 def describe_error(err):
     flat = " ".join(" ".join(map(str, v)) for v in err)
     if "PE" in flat:
@@ -723,6 +774,27 @@ def start_scan():
     job["thread"] = threading.Thread(target=scan_job, args=(load_settings(),), daemon=True)
     job["thread"].start()
     return {"started": True}
+
+
+@app.post("/api/import/pick")
+def pick_import_folder():
+    """Choose a FastFoto folder (native dialog); returns it with the number of photos found."""
+    try:
+        out = run(["osascript", "-e", 'POSIX path of (choose folder with prompt "Import photos saved by Epson FastFoto:")'])
+    except subprocess.CalledProcessError:
+        return {"folder": None}
+    except FileNotFoundError:
+        raise HTTPException(501, "the folder picker needs macOS; type the folder path instead")
+    folder = out.strip()
+    return {"folder": folder, "count": len(fastfoto_photos(folder)), "name": Path(folder).name}
+
+
+@app.post("/api/import")
+def start_import(body: dict):
+    folder = Path(body["folder"]).expanduser()
+    if not folder.is_dir():
+        raise HTTPException(400, f"not a folder: {folder}")
+    return {"queued": import_job(folder, load_settings())}
 
 
 @app.post("/api/cancel")
@@ -969,6 +1041,16 @@ def delete_ai_key():
     return {"present": False}
 
 
+def unanalysed(s):
+    """Pictures without an AI caption (Headline), in all of the app's folders. One exiftool run per folder."""
+    out = []
+    for root in roots(s):
+        if root.is_dir():
+            rows = json.loads(run(["exiftool", "-j", "-q", "-r", "-ext", "jpg", "-Headline", str(root)]) or "[]")
+            out += [r["SourceFile"] for r in rows if not r.get("Headline") and dupes.is_picture(r["SourceFile"])]
+    return out
+
+
 @app.post("/api/analyze")
 def analyze(body: dict):
     """Queue already-scanned photos for AI analysis (their back and enhanced copy are picked up by name)."""
@@ -976,8 +1058,10 @@ def analyze(body: dict):
     problem = ai_setup_problem(s["ai"])
     if problem:
         raise HTTPException(400, problem)
+    NO_CREDIT.clear()  # the user is retrying, e.g. after topping up
+    files = unanalysed(s) if body.get("pending") else body["files"]
     queued, seen = 0, set()
-    for f in body["files"]:
+    for f in files:
         p = safe_path(f)
         if p.stem.endswith("_back") or not dupes.is_picture(p) and not p.stem.endswith("_enhanced"):
             continue
