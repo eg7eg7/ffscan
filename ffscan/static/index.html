@@ -982,7 +982,10 @@ function handleEvent(e) {
     case "uploaded": setCloud(e.file, "uploaded", e.dest); if (age < 5) log("Uploaded → " + e.dest); break;
     case "upload_failed": setCloud(e.file, "failed", e.dest); if (age < 5) log(`Upload failed (${e.dest}): ${e.error}`, true); break;
     case "scanned":
-      if (age < 5 && e.mb) log(`Scanned side ${e.side}: ${e.mb} MB in ${e.secs} s (${(e.mb / Math.max(e.secs, 0.01)).toFixed(1)} MB/s)` +
+      // face-up prints: the scanner always sends the back (side A) first, even for "picture only": a single-sided
+      // pass reads only the side facing down. The back is still read for handwriting, just not saved.
+      const what = e.side === "B" ? "picture" : settings.sides === "picture" ? "back (read for writing, not saved)" : "back";
+      if (age < 5 && e.mb) log(`Scanned ${what}: ${e.mb} MB in ${e.secs} s (${(e.mb / Math.max(e.secs, 0.01)).toFixed(1)} MB/s)` +
         (e.blocks ? ` · ${e.blocks} blocks up to ${e.max_block_kb} KB · waiting ${e.wait_s} s, transferring ${e.transfer_s} s` : ""));
       if (age < 5) setStatus(`Scanning… ${e.scanned} scanned (processing starts when the scanner stops)`, "ok");
       break;
