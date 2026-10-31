@@ -33,6 +33,11 @@ Day-to-day tracking happens on the [project board](https://github.com/users/eg7e
 - **Album layout** `Originals/` + `Enhanced/` (default).
 - **Docker image** (`Dockerfile`, `docker-compose.yml`) running everything that doesn't need macOS.
 - **Settings sidebar** in collapsible sections with live summaries, and an Activity log pinned to the window.
+- **USB transport:** the same ESC/I-2 commands over USB bulk endpoints, used automatically when the scanner is
+  plugged in (~15× faster transfer than Wi-Fi at 600 dpi).
+- **Mac app:** ffscan in its own window (pywebview), with the server and window starting and stopping together and only one
+  copy running at a time. `FFScan.command` starts it with a double-click; `tools/build-mac-app.sh` builds a
+  standalone `FFScan.app` with Python, exiftool, rclone and libusb inside.
 
 ## Next
 
@@ -43,7 +48,6 @@ Day-to-day tracking happens on the [project board](https://github.com/users/eg7e
 - **Measure AI orientation** on a labelled set of photos without faces, and compare models and costs.
 - **Red-eye check** on real flash photos; so far it has only been tested on synthetic eyes.
 - **Enhancement v2:** dust and scratch removal, and a side-by-side before/after view.
-- **USB transport** for scanners without Wi-Fi.
 - **Other ESC/I-2 scanners** (FF-640, DS series): the protocol is shared, but model details may differ.
 
 ## Known limitations
@@ -52,4 +56,5 @@ Day-to-day tracking happens on the [project board](https://github.com/users/eg7e
 - The network-scan fallback assumes a /24 subnet. Larger networks rely on Bonjour or a manually entered address.
 - rclone's shared Google sign-in is being retired by rclone; Google accounts may need your own OAuth client ID.
 - Cropping re-encodes the JPEG once (quality 95); metadata is kept.
+- `FFScan.app` isn't signed or notarized (another Mac asks to allow it once) and runs on Apple silicon only.
 - Docker: no Apple Vision (face rotate, red-eye), no Bonjour, no browser sign-in for OAuth cloud accounts.
