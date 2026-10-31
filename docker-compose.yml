@@ -1,7 +1,10 @@
 # docker compose up -d   →   open http://localhost:8680
 services:
   ffscan:
-    build: .
+    build:
+      context: .
+      args:
+        FFSCAN_COMMIT: ${FFSCAN_COMMIT:-}   # FFSCAN_COMMIT=$(git rev-parse --short HEAD) docker compose up -d --build
     image: ffscan
     ports:
       - "127.0.0.1:8680:8680"          # only reachable from this computer

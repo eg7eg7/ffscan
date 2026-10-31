@@ -30,6 +30,7 @@
   table { border-collapse: collapse; width: 100%; margin: 8px 0; }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
   .tip { background: var(--panel); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 12px 0; }
 </style>
 </head>
@@ -237,6 +238,13 @@
   <tr><td>Cloud accounts</td><td><code>~/.config/rclone/rclone.conf</code></td></tr>
   <tr><td>Starting the app</td><td><code>./run.sh</code> in the project folder, then open <a href="/">http://localhost:8680</a></td></tr>
 </table>
+<footer class="muted"><span class="version"></span></footer>
 </div>
+<script>
+fetch("/api/version").then(r => r.json()).then(v => {
+  const commit = v.commit ? ` · <a href="${v.repo}/commit/${v.commit}" target="_blank" rel="noopener">${v.commit}</a>` : "";
+  document.querySelector(".version").innerHTML = `<a href="${v.repo}" target="_blank" rel="noopener">ffscan on GitHub</a>${commit}`;
+}).catch(() => {});
+</script>
 </body>
 </html>

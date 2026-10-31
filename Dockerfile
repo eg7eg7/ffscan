@@ -18,6 +18,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ffscan ffscan
 
+# shown in the app's footer: docker build --build-arg FFSCAN_COMMIT=$(git rev-parse --short HEAD) .
+ARG FFSCAN_COMMIT=""
+ENV FFSCAN_COMMIT=$FFSCAN_COMMIT
+
 ENV FFSCAN_BIND=0.0.0.0 \
     FFSCAN_PORT=8680 \
     FFSCAN_DATA_DIR=/data \

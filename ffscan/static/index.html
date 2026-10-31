@@ -93,6 +93,7 @@
               border-top: 1px solid var(--line); box-shadow: 0 -4px 14px rgba(0,0,0,.12); }
   .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 20px; font-size: 12px; }
   .loghead .spacer { flex: 1; }
+  .version { color: var(--muted); white-space: nowrap; } .version a { color: var(--muted); }
   .loghead button { padding: 2px 8px; font-size: 12px; }
   #logLast { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   #log { height: 150px; overflow-y: auto; padding: 0 20px 8px; font: 12px ui-monospace, monospace; color: var(--muted); }
@@ -224,6 +225,7 @@
 
 <div id="logPanel" class="logpanel">
   <div class="loghead"><strong>Activity</strong><span id="logLast"></span><span class="spacer"></span>
+    <span class="version"></span>
     <button id="logClear" type="button" title="Clear the log">Clear</button>
     <button id="logToggle" type="button" title="Minimise the activity log">▾</button></div>
   <div id="log" role="log" aria-live="polite"></div>
@@ -307,6 +309,15 @@ function render() {
   });
   document.querySelectorAll(".vertex-only").forEach(el => { el.hidden = settings.ai?.provider !== "vertex"; });
   updateSummaries();
+}
+
+// ---------- version footer: GitHub link and the commit this build runs
+function showVersion(v) {
+  const commit = v.commit
+    ? ` · <a href="${v.repo}/commit/${v.commit}" target="_blank" rel="noopener" title="The code version running">${v.commit}</a>` : "";
+  document.querySelectorAll(".version").forEach(el => {
+    el.innerHTML = `<a href="${v.repo}" target="_blank" rel="noopener">ffscan on GitHub</a>${commit}`;
+  });
 }
 
 // ---------- collapsible sections: one-line summary of current values, open/closed remembered per viewer
@@ -668,6 +679,7 @@ function setLogMinimised(min) {
 $("#logToggle").onclick = () => setLogMinimised(!$("#logPanel").classList.contains("min"));
 $("#logClear").onclick = () => { $("#log").innerHTML = ""; $("#logLast").textContent = ""; };
 setLogMinimised(store.get("log.minimised", false));
+fetch("/api/version").then(r => r.json()).then(showVersion).catch(() => {});
 // polled, not streamed: a stream per tab used up the browser's 6 connections to this app
 let nextEvent = 0;
 async function pollEvents() {

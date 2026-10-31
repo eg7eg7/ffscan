@@ -404,7 +404,29 @@ def describe_error(err):
 
 # ---------------------------------------------------------------- API
 
+REPO_URL = "https://github.com/eg7eg7/ffscan"
+
+
+def _commit():
+    """Short commit hash of this build: FFSCAN_COMMIT (set in Docker builds) or the git checkout's HEAD."""
+    if os.environ.get("FFSCAN_COMMIT"):
+        return os.environ["FFSCAN_COMMIT"][:7]
+    try:
+        out = subprocess.run(["git", "-C", str(ROOT.parent), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+VERSION = {"repo": REPO_URL, "commit": _commit()}
+
 app = FastAPI(title="FF-680W")
+
+
+@app.get("/api/version")
+def version():
+    return VERSION
 
 
 @app.get("/api/settings")
