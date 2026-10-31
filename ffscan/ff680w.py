@@ -705,7 +705,9 @@ class FF680W:
                 elif time.monotonic() - last > poll_timeout:
                     raise ScannerError(f"no data for {poll_timeout}s")
                 else:
-                    time.sleep(0.05)  # photo still feeding
+                    # photo still feeding, or the next block isn't encoded yet. Over USB a poll costs ~3 ms and a side
+                    # comes in ~100 blocks: 50 ms naps added ~4 s per side; over Wi-Fi a poll is a ~36 ms round trip
+                    time.sleep(0.005 if self.usb else 0.05)
         except BaseException:
             self.command("CAN ")
             raise
