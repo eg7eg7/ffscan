@@ -22,8 +22,9 @@ organised into albums, tagged and optionally uploaded to the cloud.
 - **Backs of prints:** save the picture only, the back too, or skip backs that have no writing on them.
 - **Your file names and folders:** a file-name prefix with `{album}`/`{date}` (numbering never overwrites),
   and where enhanced copies go: by default each album is split into `Originals/` and `Enhanced/`.
-- **Full-speed scanning:** the scanner never waits for processing; crop, enhancement and metadata run in the
-  background while the next photos feed.
+- **Full-speed scanning:** while a stack feeds, the scanner has the computer and network to itself; cropping,
+  enhancement, AI and uploads run as soon as it's through. A face-down, single-sided mode sends only the picture
+  (about half the data) when the backs don't matter.
 - **Adjust & preview:** brightness, contrast, saturation, warmth and sharpness sliders with a live before/after
   on one of your own photos; save as the default or apply to selected photos.
 - **Picks up where it left off:** queued processing, AI analysis and uploads are kept in a small SQLite file, so

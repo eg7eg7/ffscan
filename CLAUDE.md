@@ -58,7 +58,9 @@ server to run, and it works the same natively and in Docker.
 ## Pipeline (per scanned side)
 
 The scan loop (`app.scan_job`) only calls `save_raw` and queues the side: never add slow work there, or the
-scanner stalls. `process_worker` runs `app.process_page` strictly in order (back pairing and duplicate checks
+scanner stalls. `FEEDING` is set while a stack goes through the scanner; the process, AI and upload workers
+call `wait_for_scanner()` first, so the scan gets the CPU (pure-Python crop code holds the GIL) and the Wi-Fi.
+`sides: "fast"` scans single-sided (prints face down) and relabels side A as the picture (side B). `process_worker` runs `app.process_page` strictly in order (back pairing and duplicate checks
 depend on it):
 
 copy raw into the album (`Originals/` in the default split layout) → side filter → crop → blank-back check → duplicate check → enhanced copy → face rotation →

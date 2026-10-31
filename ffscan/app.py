@@ -41,7 +41,7 @@ DEFAULTS = {
     "folder": os.environ.get("FFSCAN_PHOTOS_DIR", str(Path.home() / "Pictures" / "Scans")),
     "dpi": 300,
     "color": "C024",          # C024 colour, M008 greyscale
-    "sides": "picture",       # picture | back | both
+    "sides": "picture",       # picture | both | back | fast (face down, single-sided: only the picture is sent)
     "skip_blank_backs": True, # only with sides=both/back: drop backs without writing
     "blank_threshold": 0.015,
     "crop": True,
@@ -296,8 +296,7 @@ def upload_worker():
     while True:
         job_id, j = JOBS.queue("upload").get()
         path, remote, base, rel, error = j["path"], j["remote"], j["base"], j["rel"], None
-        while job["thread"] and job["thread"].is_alive():  # don't share the Wi-Fi with a scan in progress
-            time.sleep(1)
+        wait_for_scanner()
         dest = cloud.destination(remote.rstrip(":"), base, rel)
         upload_stats["current"] = os.path.basename(path)
         for attempt in range(3):
@@ -325,6 +324,13 @@ def upload_worker():
 # ---------------------------------------------------------------- scan job
 
 job = {"thread": None, "cancel": threading.Event()}
+FEEDING = threading.Event()  # set while a stack goes through the scanner: everything else waits, so the scan
+                             # gets the CPU (pure-Python processing holds the GIL) and the Wi-Fi to itself
+
+
+def wait_for_scanner():
+    while FEEDING.is_set():
+        time.sleep(0.5)
 
 
 def roots(s):
@@ -526,6 +532,7 @@ def analyze_photo(path, files, raw_back, rotation_decided, s):
 def ai_worker():
     while True:
         job_id, j = JOBS.queue("ai").get()
+        wait_for_scanner()
         path, files, s, error = Path(j["path"]), [Path(f) for f in j["files"]], j["s"], None
         try:
             analyze_photo(path, files, j["raw_back"], j["rotation_decided"], s)
@@ -546,6 +553,7 @@ def process_worker():
     """Scanned sides are processed strictly in order (back pairing and duplicate checks depend on it)."""
     while True:
         job_id, j = JOBS.queue("process").get()
+        wait_for_scanner()  # scan first, at full speed; process the batch as soon as the scanner stops
         stats, error = PROGRESS.get(j["batch"]), None
         try:
             saved = process_page(ff680w.Page(j["index"], j["side"], 0, 0, b""), Path(j["raw"]), j["name"], j["s"],
@@ -582,28 +590,37 @@ def scan_job(s):
                     offset = next_number(batch_dir, prefix)
                     emit("stack_started")
                     side_started = time.monotonic()
-                    pages = sc.scan(dpi=s["dpi"], color=s["color"], duplex=s["sides"] != "back",  # picture = side B, needs duplex
+                    # face-up prints: the picture is side B, so both sides must be sent. "fast": prints face down,
+                    # single-sided, so the scanner sends only side A, which is then the picture (about half the data)
+                    fast = s["sides"] == "fast"
+                    pages = sc.scan(dpi=s["dpi"], color=s["color"], duplex=s["sides"] in ("picture", "both"),
                                     deskew=s["deskew"], double_feed=s["double_feed"] or None, jpeg_quality=s["quality"])
-                    for page in pages:
-                        if cancel.is_set():
-                            pages.close()  # sends CAN to the scanner
-                            break
-                        raw, name = save_raw(page, prefix, offset)  # fast: the scanner keeps feeding
-                        now = time.monotonic()
-                        mb, secs, side_started = len(page.jpeg) / 1e6, now - side_started, now
-                        with progress_lock:
-                            stats["scanned"] += 1
-                        if page.side == "A":
-                            back_raws[page.index] = raw
-                        back_raw = back_raws.pop(page.index, None) if page.side == "B" else None
-                        JOBS.put("process", {"index": page.index, "side": page.side, "raw": str(raw), "name": name,
-                                             "s": s, "out_dir": str(out_dir), "back_raw": back_raw and str(back_raw),
-                                             "batch": batch})
-                        st = getattr(sc, "last_side_stats", {})
-                        emit("scanned", scanned=stats["scanned"], processed=stats["processed"], side=page.side,
-                             mb=round(mb, 2), secs=round(secs, 2), block_size=sc.block_size_accepted,
-                             blocks=st.get("blocks"), max_block_kb=st.get("max_block", 0) // 1024,
-                             wait_s=round(st.get("wait_s", 0), 2), transfer_s=round(st.get("transfer_s", 0), 2))
+                    FEEDING.set()
+                    try:
+                        for page in pages:
+                            if cancel.is_set():
+                                pages.close()  # sends CAN to the scanner
+                                break
+                            if fast:
+                                page = page._replace(side="B")
+                            raw, name = save_raw(page, prefix, offset)  # fast: the scanner keeps feeding
+                            now = time.monotonic()
+                            mb, secs, side_started = len(page.jpeg) / 1e6, now - side_started, now
+                            with progress_lock:
+                                stats["scanned"] += 1
+                            if page.side == "A":
+                                back_raws[page.index] = raw
+                            back_raw = back_raws.pop(page.index, None) if page.side == "B" else None
+                            JOBS.put("process", {"index": page.index, "side": page.side, "raw": str(raw), "name": name,
+                                                 "s": s, "out_dir": str(out_dir), "back_raw": back_raw and str(back_raw),
+                                                 "batch": batch})
+                            st = getattr(sc, "last_side_stats", {})
+                            emit("scanned", scanned=stats["scanned"], processed=stats["processed"], side=page.side,
+                                 mb=round(mb, 2), secs=round(secs, 2), block_size=sc.block_size_accepted,
+                                 blocks=st.get("blocks"), max_block_kb=st.get("max_block", 0) // 1024,
+                                 wait_s=round(st.get("wait_s", 0), 2), transfer_s=round(st.get("transfer_s", 0), 2))
+                    finally:
+                        FEEDING.clear()  # processing, AI and uploads continue now
                 elif not s["watch"]:
                     raise ff680w.ScannerError(describe_error(err))
                 elif err != waiting:

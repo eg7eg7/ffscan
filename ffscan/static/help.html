@@ -63,6 +63,8 @@
   <li>Press <strong>Scan</strong>. A <strong>New batch</strong> window asks for the album, file-name prefix and details for these
     photos, pre-filled from the last batch: change them, press <strong>Clear</strong> for a fresh batch, then <strong>Start scan</strong>.
     Untick <em>Ask before every scan</em> to skip it (turn it back on under Batch metadata).</li>
+  <li>While the scanner feeds, it has the computer and the network to itself: cropping, enhancing, AI analysis and uploads
+    wait, then run as soon as the stack is through.</li>
   <li>The scanner feeds at full speed; cropping, enhancing and metadata happen in the background,
     and photos appear in the grid as each one is ready. The status line shows how many are scanned and processed.</li>
   <li>When the feeder is empty the scan ends by itself, unless <em>Keep scanning as I load more photos</em> is on. Press <strong>Stop</strong> at any time; the photo in progress is ejected and the scan cancelled cleanly.</li>
@@ -100,7 +102,9 @@
   <dt>Colour</dt>
   <dd><strong>Colour</strong> for everything, including faded colour prints. <strong>Greyscale</strong> makes smaller black-and-white files, good for B&W originals.</dd>
   <dt>Sides</dt>
-  <dd>The scanner reads both sides of every photo in one pass, so this only decides what is saved.
+  <dd><strong>Picture only, fast</strong>: load the photos <strong>face down</strong>. The scanner then sends only the picture
+    side, about half the data, so batches scan roughly twice as fast. The backs aren't read at all in this mode.<br>
+    With the other options, load photos face up: the scanner reads both sides of every photo in one pass, so this only decides what is saved.
     <strong>Picture only</strong> saves the image. <strong>Picture and back</strong> also keeps the back, useful for dates and notes written there.
     <strong>Back only</strong> saves only the backs.</dd>
   <dt>Skip backs with no writing</dt>

@@ -150,9 +150,10 @@
       </select></label>
     <label data-tip="Colour keeps everything as is. Greyscale saves black-and-white files (smaller), useful for old B&W prints.">Colour
       <select data-key="color"><option value="C024">Colour</option><option value="M008">Greyscale</option></select></label>
-    <label data-tip="The scanner reads both sides of every photo in one pass. Picture only saves just the image. Picture and back also saves the back (dates or notes written on it). Back only saves just the backs.">Sides
+    <label data-tip="Fast: load the photos face DOWN; the scanner then sends only the picture, about twice as fast, but backs aren't read. Otherwise load face up: the scanner reads both sides in one pass. Picture only saves just the image. Picture and back also saves the back (dates or notes written on it). Back only saves just the backs.">Sides
       <select data-key="sides">
         <option value="picture">Picture only</option>
+        <option value="fast">Picture only, fast (load face DOWN)</option>
         <option value="both">Picture and back</option>
         <option value="back">Back only</option>
       </select></label>
@@ -932,9 +933,10 @@ function handleEvent(e) {
     case "scanned":
       if (age < 5 && e.mb) log(`Scanned side ${e.side}: ${e.mb} MB in ${e.secs} s (${(e.mb / Math.max(e.secs, 0.01)).toFixed(1)} MB/s)` +
         (e.blocks ? ` · ${e.blocks} blocks up to ${e.max_block_kb} KB · waiting ${e.wait_s} s, transferring ${e.transfer_s} s` : ""));
-      // fall through
+      if (age < 5) setStatus(`Scanning… ${e.scanned} scanned (processing starts when the scanner stops)`, "ok");
+      break;
     case "processed":
-      if (age < 5) setStatus(`Scanning… ${e.scanned} scanned · ${e.processed} processed`, "ok");
+      if (age < 5) setStatus(`Processing ${e.processed} of ${e.scanned}…`, "ok");
       break;
     case "job_done":
       setScanning(false);
