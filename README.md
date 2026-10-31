@@ -1,11 +1,14 @@
 # ffscan
 
-**An open-source scanning app for the Epson FastFoto FF-680W photo scanner, for macOS.**
+**An open-source replacement for Epson's FastFoto software, for the FastFoto FF-680W photo scanner on macOS.**
 
-ffscan talks to the scanner directly over Wi-Fi, using a protocol worked out for interoperability (see
-[docs/PROTOCOL.md](docs/PROTOCOL.md)), so you don't need Epson's FastFoto software. It runs as a small local
-web app: load a stack of prints, press **Scan**, and photos appear one by one, cropped, organised into albums,
-tagged and optionally uploaded to the cloud.
+ffscan exists because Epson's FastFoto app kept crashing, over and over, in the middle of scanning sessions,
+which made digitising a box of family photos a chore. ffscan replaces it entirely: it talks to the scanner
+directly over Wi-Fi, using a protocol worked out for interoperability (see [docs/PROTOCOL.md](docs/PROTOCOL.md)),
+so Epson's software doesn't need to be installed or running.
+
+It runs as a small local web app: load a stack of prints, press **Scan**, and photos appear one by one, cropped,
+organised into albums, tagged and optionally uploaded to the cloud.
 
 ![ffscan main window](docs/screenshots/app.png)
 
