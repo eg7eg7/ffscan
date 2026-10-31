@@ -9,6 +9,7 @@ CLI: python -m ffscan.ff680w [--host H] info|capa|status|scan [scan options]
 See docs/PROTOCOL.md for the wire format.
 """
 import argparse
+import math
 import os
 import re
 import socket
@@ -107,11 +108,7 @@ def find_photo_box(bmp, threshold=40):
     not pure-white deskew fill.
     """
     w, h, px = _bmp_pixels(bmp)
-    # sample 1.5-3% in from each side: the outermost columns of 300 dpi scans are a different colour than
-    # the backing (every fresh 300 dpi crop came out 2477 px wide), and even an 8" photo leaves this clear
-    band = range(int(w * 0.015), max(int(w * 0.03), int(w * 0.015) + 1))
-    edge = [px(x, y) for y in range(h) for x in [*band, *(w - 1 - x for x in band)]]
-    bg = [sorted(p[c] for p in edge)[len(edge) // 2] for c in range(3)]  # median edge colour
+    bg = _background(bmp)
     def is_fg(p):  # pure white (>= 250) is the scanner's deskew corner fill; photo paper measures <= 246
         return sum(abs(a - b) for a, b in zip(p, bg)) > threshold and min(p) < 250
 
@@ -126,6 +123,100 @@ def find_photo_box(bmp, threshold=40):
         return 0, 0, w, h
     rows = _longest_run([sum(fg[y][cols[0]:cols[1]]) > (cols[1] - cols[0]) * 0.3 for y in range(h)]) or rows
     return cols[0], rows[0], cols[1], rows[1]
+
+
+def _background(bmp):
+    """Median colour of the scanner backing, sampled 1.5-3% in from the left and right edges: the outermost
+    columns of 300 dpi scans are a different colour than the backing, and even an 8" photo leaves this clear."""
+    w, h, px = _bmp_pixels(bmp)
+    band = range(int(w * 0.015), max(int(w * 0.03), int(w * 0.015) + 1))
+    edge = [px(x, y) for y in range(h) for x in [*band, *(w - 1 - x for x in band)]]
+    return [sorted(p[c] for p in edge)[len(edge) // 2] for c in range(3)]
+
+
+def skew_angle(im, bg, threshold=40, size=1500):
+    """Degrees to rotate `im` (Pillow, counter-clockwise positive) so the photo's edges are straight, or 0.
+
+    Each edge of the photo that doesn't touch the image border is traced in thin strips of a foreground mask
+    (differs from the backing like find_photo_box, specks eroded); its slope is the median over pairs of
+    points half the edge apart, so a stretch of sky the colour of the backing doesn't skew it.
+    """
+    from PIL import Image, ImageChops, ImageFilter
+
+    small = im.convert("RGB")
+    small.thumbnail((size, size))
+    r, g, b = ImageChops.difference(small, Image.new("RGB", small.size, tuple(bg))).split()
+    differs = ImageChops.add(ImageChops.add(r, g), b).point(lambda v: 255 if v > threshold else 0)
+    not_fill = ImageChops.darker(ImageChops.darker(*small.split()[:2]), small.split()[2]).point(lambda v: 255 if v < 250 else 0)
+    mask = ImageChops.multiply(differs, not_fill).filter(ImageFilter.MinFilter(5))
+    box = mask.getbbox()
+    if not box:
+        return 0.0
+    w, h = mask.size
+    x0, y0, x1, y1 = box
+    slopes = []
+    for vertical in (True, False):  # left/right edges: x along y; top/bottom edges: y along x
+        lo, hi = (y0, y1) if vertical else (x0, x1)
+        steps = range(int(lo + 0.15 * (hi - lo)), int(hi - 0.15 * (hi - lo)), 4)
+        near, far = [], []
+        for t in steps:
+            strip = mask.crop((0, t, w, t + 4) if vertical else (t, 0, t + 4, h)).getbbox()
+            if strip:
+                a, b_ = (strip[0], strip[2]) if vertical else (strip[1], strip[3])
+                near.append((t, a))
+                far.append((t, b_))
+        limit = w if vertical else h
+        for pts in (near, far):
+            if len(pts) < 10 or min(p for _, p in pts) <= 2 or max(p for _, p in pts) >= limit - 2:
+                continue  # edge touches the image border (cut off by the scan): can't trace it
+            half = len(pts) // 2
+            pair = sorted((pts[i + half][1] - pts[i][1]) / (pts[i + half][0] - pts[i][0]) for i in range(half))
+            s = pair[len(pair) // 2]
+            slopes.append(-s if vertical else s)  # x drifting right going down = clockwise tilt
+    if not slopes:
+        return 0.0
+    slopes.sort()
+    angle = math.degrees(math.atan(slopes[len(slopes) // 2]))
+    return angle if 0.1 <= abs(angle) <= 5 else 0.0  # below 0.1 deg: under a pixel per 600; above 5: not skew
+
+
+def trim_backing(im, box, bg, step=4, max_share=0.03):
+    """Move each side of `box` inward past lines that are flat grey: the backing, or the shadow along the
+    print's edge (measured: std <= 5, near-neutral, no brighter than the backing; picture lines vary 30-70).
+    A white print border is brighter than the backing and stays. At most 3% per side."""
+    from PIL import ImageStat
+
+    luma = sum(bg) / 3
+
+    def flat(strip):
+        st = ImageStat.Stat(im.crop(strip).convert("RGB"))
+        return sum(st.stddev) / 3 < 8 and max(st.mean) - min(st.mean) < 15 and sum(st.mean) / 3 < luma + 25
+
+    x0, y0, x1, y1 = box
+    mx, my = int((x1 - x0) * max_share), int((y1 - y0) * max_share)
+    iy0, iy1, ix0, ix1 = y0 + (y1 - y0) // 10, y1 - (y1 - y0) // 10, x0 + (x1 - x0) // 10, x1 - (x1 - x0) // 10
+    while x0 < box[0] + mx and flat((x0, iy0, x0 + step, iy1)):
+        x0 += step
+    while x1 > box[2] - mx and flat((x1 - step, iy0, x1, iy1)):
+        x1 -= step
+    while y0 < box[1] + my and flat((ix0, y0, ix1, y0 + step)):
+        y0 += step
+    while y1 > box[3] - my and flat((ix0, y1 - step, ix1, y1)):
+        y1 -= step
+    return x0, y0, x1, y1
+
+
+def inside(valid, box, step=2):
+    """Shrink `box` until its every edge line lies on pixels where the `valid` mask is 255."""
+    x0, y0, x1, y1 = box
+    bad = lambda b: valid.crop(b).getextrema()[0] < 255
+    while x1 - x0 > 2 * step and y1 - y0 > 2 * step:
+        sides = [bad((x0, y0, x0 + 1, y1)), bad((x1 - 1, y0, x1, y1)), bad((x0, y0, x1, y0 + 1)), bad((x0, y1 - 1, x1, y1))]
+        if not any(sides):
+            break
+        x0, x1 = x0 + step * sides[0], x1 - step * sides[1]
+        y0, y1 = y0 + step * sides[2], y1 - step * sides[3]
+    return x0, y0, x1, y1
 
 
 def _longest_run(flags, gap=3):
@@ -157,12 +248,12 @@ def _bmp_pixels(bmp):
 
 
 def _thumbnail(path, size=600):
-    """Downscaled BMP bytes of an image file, in its stored orientation (crop boxes are in stored pixels)."""
+    """Downscaled BMP bytes of an image file (or Pillow image), in its stored orientation (crop boxes are in stored pixels)."""
     import io
 
     from PIL import Image
 
-    im = Image.open(path)
+    im = Image.open(path) if isinstance(path, (str, os.PathLike)) else path.copy()
     im.draft("RGB", (size, size))  # JPEG: decode at reduced size, fast
     im = im.convert("RGB")
     im.thumbnail((size, size))
@@ -190,14 +281,23 @@ def autocrop(path, margin=2):
     """
     from PIL import Image
 
-    bmp = _thumbnail(path)
-    thumb_w = struct.unpack_from("<i", bmp, 18)[0]
     im = Image.open(path)
+    keep = {k: im.info[k] for k in ("exif", "xmp", "icc_profile", "dpi") if im.info.get(k)}
+    bmp = _thumbnail(im)
+    # straighten first: a print that went through at a slight angle otherwise leaves wedges of backing
+    angle, scanned = skew_angle(im, bg := _background(bmp)), None
+    if angle:
+        scanned = Image.new("L", im.size, 255).rotate(angle, expand=True)  # 0 where rotation filled the corners
+        im = im.convert("RGB").rotate(angle, Image.BICUBIC, expand=True, fillcolor=tuple(bg))
+        bmp = _thumbnail(im)
+    thumb_w = struct.unpack_from("<i", bmp, 18)[0]
     scale = im.width / thumb_w
     # shrink by margin (thumbnail px) to drop the soft edge, then scale to full resolution
     bx0, by0, bx1, by1 = find_photo_box(bmp)
     box = tuple(int(v * scale) for v in (bx0 + margin, by0 + margin, bx1 - margin, by1 - margin))
-    keep = {k: im.info[k] for k in ("exif", "xmp", "icc_profile", "dpi") if im.info.get(k)}
+    box = trim_backing(im, box, bg)
+    if scanned:  # a print cut off by the scan's edge: keep the rotated fill wedges out of the crop
+        box = inside(scanned, box)
     im.crop(box).save(path, "JPEG", quality=95, **keep)
     return box[2] - box[0], box[3] - box[1]
 

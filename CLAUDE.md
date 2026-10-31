@@ -84,6 +84,9 @@ Order matters:
 - Sample the crop background 1.5–3% in from the edges: the outermost columns of 300 dpi scans differ.
 - Pure-white pixels (≥ 250) are deskew corner fill, not photo.
 - Find rows first, then count columns only within them: back-side scans have a full-width band past the paper.
+- Prints still come through tilted (up to ~1°) with hardware `SKEW` on, and cast a flat grey shadow ~40 px wide
+  along one edge. `autocrop` straightens first (`skew_angle`), trims flat grey lines (`trim_backing`), and keeps
+  rotation fill out when the print was cut off by the scan's edge (`inside`).
 
 ## Prefer on-device methods over AI
 

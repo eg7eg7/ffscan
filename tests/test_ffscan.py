@@ -72,6 +72,27 @@ edge_strip = lambda x, y: STRIP if x < 1 or x > 98 else scan(x, y)
 assert find_photo_box(bmp(100, 80, edge_strip)) == (20, 5, 80, 50), find_photo_box(bmp(100, 80, edge_strip))
 from PIL import Image
 
+import tempfile
+
+# skewed print with a shadow along one edge: straightened, and no backing grey left in the crop
+from ffscan.ff680w import autocrop, skew_angle
+
+with tempfile.TemporaryDirectory() as tmp:
+    photo = Image.new("RGB", (1235, 800), (120, 118, 114))  # 35 px shadow along the right edge
+    for i in range(0, 1200, 40):
+        photo.paste((150 + i % 80, 60, 40), (i, 0, i + 40, 800))  # vertical colour stripes
+    scan = Image.new("RGB", (1800, 1100), GREY)
+    tilted = photo.rotate(1.0, Image.BICUBIC, expand=True)
+    scan.paste(tilted, (250, 140), Image.new("L", photo.size, 255).rotate(1.0, expand=True))
+    assert abs(skew_angle(scan, GREY) + 1.0) < 0.15, skew_angle(scan, GREY)
+    scan.save(Path(tmp) / "s.jpg", quality=95)
+    w, h = autocrop(str(Path(tmp) / "s.jpg"))
+    assert 1140 < w <= 1200 and 760 < h <= 800, (w, h)
+    out = Image.open(Path(tmp) / "s.jpg").convert("RGB")
+    for x, y in ((3, 3), (w - 4, 3), (3, h - 4), (w - 4, h - 4), (w - 4, h // 2)):
+        r, g, b = out.getpixel((x, y))
+        assert r - b > 40, ((x, y), (r, g, b))  # photo red, not neutral backing or shadow
+
 from ffscan.enhance import remove_red_eye
 
 # red pupil inside the eye circle is neutralised; skin-coloured and out-of-circle pixels are untouched
