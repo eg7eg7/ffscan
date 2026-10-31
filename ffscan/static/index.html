@@ -48,6 +48,15 @@
   textarea { resize: vertical; min-height: 48px; }
   .folder { display: flex; gap: 6px; } .folder input { flex: 1; }
   .sub { margin-left: 22px; }
+  dialog.wide { width: min(1100px, 96vw); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .compare figure { margin: 0; }
+  .compare img { width: 100%; height: 340px; object-fit: contain; background: var(--bg); border-radius: 6px; display: block; }
+  .compare figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .adj-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; margin-top: 10px; }
+  .slider { display: grid; grid-template-columns: 90px 1fr 34px; align-items: center; gap: 8px; margin: 4px 0; }
+  .slider input { width: 100%; } .slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  @media (max-width: 760px) { .compare, .adj-grid { grid-template-columns: 1fr; } }
   .field-label { margin: 6px 0 4px; }
   .muted { color: var(--muted); font-size: 12px; }
   .account { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0;
@@ -159,6 +168,7 @@
       <label class="row" data-tip="Finds eyes with Apple's face detection and neutralises red flash reflections in the pupils. Only strongly red pixels inside the eyes are changed; skin is left alone."><input type="checkbox" data-key="enhance_opts.red_eye"> Remove red-eye</label>
       <label class="row" data-tip="Old prints fade unevenly and drift to a red or magenta cast. This rebalances each colour channel to bring back contrast and neutral colours."><input type="checkbox" data-key="enhance_opts.restore"> Restore faded colours</label>
       <label class="row" data-tip="Measures brightness, contrast and colour saturation of each photo and nudges them toward a natural look: dark photos get lighter, flat ones more contrast, dull ones more colour. Adds slight sharpening."><input type="checkbox" data-key="enhance_opts.auto"> Auto brightness, contrast &amp; saturation</label>
+      <button id="adjustBtn" type="button" style="margin:4px 0 6px" title="Fine-tune brightness, contrast, saturation, warmth and sharpness, and see the result on one of your photos">Adjust &amp; preview…</button>
       <label data-tip="Originals / Enhanced folders: each album gets an Originals folder for the scans and an Enhanced folder for the improved copies. Next to the original: same folder, named …_enhanced.jpg. Enhanced subfolder: an 'Enhanced' folder inside each album. Another folder: a separate place of your choice, with the same album subfolders. Cloud uploads keep this layout.">Save enhanced copies
         <select data-key="enhance_location">
           <option value="split">Originals / Enhanced folders</option>
@@ -262,6 +272,37 @@
   <p id="folderStatus" class="hint"></p>
   <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
     <button id="folderCancel" type="button">Cancel</button><button id="folderUse" type="button" class="primary">Upload here</button></div>
+</dialog>
+
+<dialog id="adjustDialog" class="wide">
+  <h3 style="margin-top:0">Adjust enhancement</h3>
+  <div class="compare">
+    <figure><img id="adjBefore" alt="Original"><figcaption>Original</figcaption></figure>
+    <figure><img id="adjAfter" alt="Enhanced preview"><figcaption>Enhanced <span id="adjBusy" class="muted"></span></figcaption></figure>
+  </div>
+  <div class="muted" id="adjPhoto"></div>
+  <div class="adj-grid">
+    <div>
+      <label class="row"><input type="checkbox" data-adj="red_eye"> Remove red-eye</label>
+      <label class="row"><input type="checkbox" data-adj="restore"> Restore faded colours</label>
+      <label class="row"><input type="checkbox" data-adj="auto"> Auto brightness, contrast &amp; saturation</label>
+    </div>
+    <div>
+      <label class="slider">Brightness <input type="range" min="-50" max="50" data-adj="brightness"><output></output></label>
+      <label class="slider">Contrast <input type="range" min="-50" max="50" data-adj="contrast"><output></output></label>
+      <label class="slider">Saturation <input type="range" min="-50" max="50" data-adj="saturation"><output></output></label>
+      <label class="slider">Warmth <input type="range" min="-50" max="50" data-adj="warmth"><output></output></label>
+      <label class="slider">Sharpness <input type="range" min="-50" max="50" data-adj="sharpness"><output></output></label>
+    </div>
+  </div>
+  <div class="toolbar" style="margin-top:12px">
+    <button type="button" id="adjNext" title="Preview on another photo">Next photo ›</button>
+    <button type="button" id="adjReset" title="Set all sliders back to 0">Reset sliders</button>
+    <span class="spacer"></span>
+    <button type="button" id="adjCancel">Cancel</button>
+    <button type="button" id="adjApply" title="Make enhanced copies of the selected photos with these settings">Apply to selected</button>
+    <button type="button" id="adjSave" class="primary" title="Use these settings for all future enhanced copies">Save as default</button>
+  </div>
 </dialog>
 
 <dialog id="batchDialog">
@@ -462,6 +503,64 @@ $("#keyRemove").onclick = async () => {
   await api("/api/ai/key", { method: "DELETE" }); $("#keyStatus").textContent = ""; loadKey();
 };
 document.querySelector('[data-key="ai.provider"]').addEventListener("change", () => setTimeout(loadKey, 300));
+
+// ---------- adjust enhancement with a live before/after preview on a real photo
+let adj = {}, adjFile = null, adjTimer = null;
+const isOriginal = f => !/_(enhanced|back)\.jpg$/.test(f) && !/_\d+A\.jpg$/.test(f);
+function adjCandidates() {
+  const sel = [...selected].filter(isOriginal);
+  const all = [...document.querySelectorAll(".card")].map(c => c.dataset.file).filter(isOriginal);
+  return sel.length ? sel : all;
+}
+function adjShowPhoto() {
+  $("#adjBefore").src = `/api/preview?original=1&file=${encodeURIComponent(adjFile)}`;
+  $("#adjPhoto").textContent = adjFile.split("/").slice(-2).join("/");
+  adjRefresh(0);
+}
+function adjRefresh(delay = 180) {  // debounced: rendering takes a moment, sliders fire many events
+  clearTimeout(adjTimer);
+  adjTimer = setTimeout(() => {
+    $("#adjBusy").textContent = "updating…";
+    const img = $("#adjAfter");
+    img.onload = () => { $("#adjBusy").textContent = ""; };
+    img.src = `/api/preview?file=${encodeURIComponent(adjFile)}&opts=${encodeURIComponent(JSON.stringify(adj))}&t=${Date.now()}`;
+  }, delay);
+}
+function adjRender() {
+  document.querySelectorAll("[data-adj]").forEach(el => {
+    const v = adj[el.dataset.adj];
+    if (el.type === "checkbox") el.checked = !!v;
+    else { el.value = v || 0; el.nextElementSibling.textContent = (v > 0 ? "+" : "") + (v || 0); }
+  });
+}
+document.querySelectorAll("[data-adj]").forEach(el => el.addEventListener("input", () => {
+  adj[el.dataset.adj] = el.type === "checkbox" ? el.checked : parseInt(el.value, 10);
+  adjRender(); adjRefresh();
+}));
+$("#adjustBtn").onclick = () => {
+  const files = adjCandidates();
+  if (!files.length) { log("Scan or select a photo first to preview the adjustments", true); return; }
+  adj = { ...settings.enhance_opts }; adjFile = files[0];
+  adjRender(); $("#adjustDialog").showModal(); adjShowPhoto();
+};
+$("#adjNext").onclick = () => {
+  const files = adjCandidates(); adjFile = files[(files.indexOf(adjFile) + 1) % files.length]; adjShowPhoto();
+};
+$("#adjReset").onclick = () => { ["brightness", "contrast", "saturation", "warmth", "sharpness"].forEach(k => { adj[k] = 0; }); adjRender(); adjRefresh(0); };
+$("#adjCancel").onclick = () => $("#adjustDialog").close();
+$("#adjSave").onclick = async () => {
+  settings = await api("/api/settings", { method: "PUT", body: JSON.stringify({ enhance_opts: adj }) });
+  render(); $("#adjustDialog").close(); log("Saved enhancement settings for future copies");
+};
+$("#adjApply").onclick = async () => {
+  const files = [...selected].filter(isOriginal);
+  if (!files.length) { log("Select the photos to apply these settings to (click their thumbnails)", true); return; }
+  $("#adjustDialog").close();
+  for (const file of files) {
+    try { const r = await post("/api/enhance", { file, opts: adj }); log(`Enhanced copy: ${r.file.split("/").pop()} (${r.steps.join(", ")})`); }
+    catch (e) { log(e.message, true); }
+  }
+};
 
 // ---------- cloud folder browser
 let browsePath = "";
@@ -828,7 +927,8 @@ function handleEvent(e) {
     case "uploaded": setCloud(e.file, "uploaded", e.dest); if (age < 5) log("Uploaded → " + e.dest); break;
     case "upload_failed": setCloud(e.file, "failed", e.dest); if (age < 5) log(`Upload failed (${e.dest}): ${e.error}`, true); break;
     case "scanned":
-      if (age < 5 && e.mb) log(`Scanned side ${e.side}: ${e.mb} MB in ${e.secs} s (${(e.mb / Math.max(e.secs, 0.01)).toFixed(1)} MB/s)`);
+      if (age < 5 && e.mb) log(`Scanned side ${e.side}: ${e.mb} MB in ${e.secs} s (${(e.mb / Math.max(e.secs, 0.01)).toFixed(1)} MB/s)` +
+        (e.blocks ? ` · ${e.blocks} blocks up to ${e.max_block_kb} KB · waiting ${e.wait_s} s, transferring ${e.transfer_s} s` : ""));
       // fall through
     case "processed":
       if (age < 5) setStatus(`Scanning… ${e.scanned} scanned · ${e.processed} processed`, "ok");

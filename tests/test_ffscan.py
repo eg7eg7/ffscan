@@ -145,6 +145,19 @@ for noise in ["Kodak", "5041111 NN N-12", "Kod", "•Kodak", "MADE IN GERMANY", 
 for writing in ["Living room, 14.7.1986", "Seaside, summer 1986", "Mom 1986", "08/1992", "Dana and Yoni"]:
     assert app.human_text(writing) == writing, writing
 
+# durable job queue: pending work survives a "restart" (a new store on the same file), finished work doesn't return
+from ffscan import jobs
+
+with tempfile.TemporaryDirectory() as tmp:
+    store = jobs.JobStore(Path(tmp) / "jobs.db")
+    a = store.put("upload", {"path": "a.jpg"})
+    store.put("upload", {"path": "b.jpg"})
+    store.finish(a)
+    restarted = jobs.JobStore(Path(tmp) / "jobs.db")
+    assert [p["path"] for _, p in restarted.pending("upload")] == ["b.jpg"]
+    assert restarted.queue("upload").get_nowait()[1] == {"path": "b.jpg"}
+    assert restarted.counts() == {"upload": 1}
+
 from ffscan.photo_ai import to_metadata
 
 r = {"rotation": 0, "caption": "Kids at the beach.", "tags": ["beach"], "date_estimate": "1980s",

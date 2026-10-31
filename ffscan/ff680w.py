@@ -312,6 +312,8 @@ class FF680W:
             if not self.host:
                 raise ScannerError("the scanner is no longer on the network; is it on?")
             self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        # request/reply protocol with small requests: don't let Nagle's algorithm hold them back
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         _recv_packet(self.sock)  # 0x8000 hello
         _send_packet(self.sock, 0x2100, self.LOCK)
         if _recv_packet(self.sock) != (0xA100, b"\x06"):
@@ -393,18 +395,30 @@ class FF680W:
 
         self.command("TRDT")
         index, parts, last = 0, {}, time.monotonic()
+        # per side: blocks received, largest block, seconds waiting (empty replies) vs moving data
+        self.side_stats = {}
         try:
             while True:
+                t0 = time.monotonic()
                 hdr, block = self.command("IMG ")
+                spent = time.monotonic() - t0
                 if hdr[:4] == b"INVD":
                     return  # transfer finished
                 t = tokens_to_dict(parse_tokens(hdr[12:]))
                 side = "B" if ["IMGB"] in t.get("typ", []) else "A"
                 parts.setdefault(side, []).append(block)
+                st = self.side_stats.setdefault(side, {"blocks": 0, "max_block": 0, "wait_s": 0.0, "transfer_s": 0.0})
+                if block:
+                    st["blocks"] += 1
+                    st["max_block"] = max(st["max_block"], len(block))
+                    st["transfer_s"] += spent
+                else:
+                    st["wait_s"] += spent
                 if "err" in t:
                     raise ScannerError(f"scan error: {t['err']}")
                 if "pen" in t:
                     w, h = t["pen"][0]
+                    self.last_side_stats = self.side_stats.pop(side, {})
                     yield Page(index, side, w, h, fix_jpeg_height(b"".join(parts.pop(side)), h))
                     if side == "B" or not duplex:
                         index += 1

@@ -55,22 +55,53 @@ def auto_enhance(im, target_brightness=0.47, target_saturation=0.38):
     return ImageEnhance.Sharpness(im).enhance(1.15)
 
 
-def enhance(src, dst, red_eye=True, restore=True, auto=True):
-    """Write an enhanced copy of src to dst with the chosen steps. Returns the list of steps applied."""
-    im = Image.open(src)
-    dpi = im.info.get("dpi", (300, 300))
-    im = im.convert("RGB")
+MANUAL = ("brightness", "contrast", "saturation", "warmth", "sharpness")  # sliders, -50..50, 0 = unchanged
+
+
+def adjust(im, brightness=0, contrast=0, saturation=0, warmth=0, sharpness=0):
+    """Manual adjustments after the automatic fixes. Each value is -50..50; 0 leaves the photo unchanged."""
+    if brightness:
+        im = ImageEnhance.Brightness(im).enhance(1 + brightness / 100)
+    if contrast:
+        im = ImageEnhance.Contrast(im).enhance(1 + contrast / 100)
+    if saturation:
+        im = ImageEnhance.Color(im).enhance(1 + saturation / 100)
+    if warmth:  # warmer = more red/less blue, cooler = the opposite; up to about ±15% at the ends
+        r, g, b = im.split()
+        k = warmth / 330
+        im = Image.merge("RGB", (r.point(lambda v: min(255, round(v * (1 + k)))), g,
+                                 b.point(lambda v: min(255, round(v * (1 - k))))))
+    if sharpness:
+        im = ImageEnhance.Sharpness(im).enhance(1 + sharpness / 50)
+    return im
+
+
+def enhance_image(im, eyes=(), red_eye=True, restore=True, auto=True, **manual):
+    """The whole enhancement on an RGB image (shared by saved copies and the live preview); returns (image, steps).
+
+    `eyes` are eye positions in this image's pixels (see find_eyes), used only when red_eye is on.
+    """
     done = []
-    if red_eye:
-        eyes = find_eyes(src)
-        if eyes:
-            remove_red_eye(im, eyes)
-            done.append(f"red-eye ({len(eyes)} eyes checked)")
+    if red_eye and eyes:
+        remove_red_eye(im, eyes)
+        done.append(f"red-eye ({len(eyes)} eyes checked)")
     if restore:
         im = restore_faded(im)
         done.append("restored colours")
     if auto:
         im = auto_enhance(im)
         done.append("auto enhance")
+    manual = {k: v for k, v in manual.items() if k in MANUAL and v}
+    if manual:
+        im = adjust(im, **manual)
+        done.append("adjusted " + ", ".join(manual))
+    return im, done
+
+
+def enhance(src, dst, red_eye=True, **opts):
+    """Write an enhanced copy of src to dst with the chosen steps. Returns the list of steps applied."""
+    im = Image.open(src)
+    dpi = im.info.get("dpi", (300, 300))
+    im, done = enhance_image(im.convert("RGB"), find_eyes(src) if red_eye else (), red_eye=red_eye, **opts)
     im.save(dst, quality=95, dpi=dpi)
     return done

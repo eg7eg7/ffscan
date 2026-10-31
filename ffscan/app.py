@@ -14,7 +14,6 @@ Environment (all optional; the Docker image sets several of them):
 """
 import json
 import os
-import queue
 import re
 import shutil
 import subprocess
@@ -27,7 +26,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cloud, dupes, ff680w
+from . import cloud, dupes, ff680w, jobs
 from . import enhance as enhancer
 
 ROOT = Path(__file__).parent
@@ -51,7 +50,8 @@ DEFAULTS = {
     "quality": 90,
     "auto_rotate": True,
     "enhance": False,         # also save an enhanced copy (original kept), with these steps:
-    "enhance_opts": {"red_eye": True, "restore": True, "auto": True},
+    "enhance_opts": {"red_eye": True, "restore": True, "auto": True,  # automatic fixes
+                     "brightness": 0, "contrast": 0, "saturation": 0, "warmth": 0, "sharpness": 0},  # sliders
     # split: <album>/Originals + <album>/Enhanced | same: next to the original | subfolder: <album>/Enhanced
     # | folder: enhance_folder/<album>
     "enhance_location": "split",
@@ -243,7 +243,7 @@ def read_metadata(path):
 
 # ---------------------------------------------------------------- cloud upload (rclone)
 
-uploads = queue.Queue()
+JOBS = jobs.JobStore(DATA_DIR / "jobs.db")  # processing, AI and upload queues that survive a restart
 
 
 LEDGER_FILE = SETTINGS_FILE.parent / "uploads.json"  # {path: {"dest": ..., "mtime": ..., "time": ...}}
@@ -286,13 +286,14 @@ def queue_upload(path, s):
         if upload_stats["done"] + upload_stats["failed"] >= upload_stats["total"]:  # previous batch finished
             upload_stats.update(total=0, done=0, failed=0, current=None)
         upload_stats["total"] += 1
-    uploads.put((str(path), s["upload"]["remote"], s["upload"]["path"], rel))
+    JOBS.put("upload", {"path": str(path), "remote": s["upload"]["remote"], "base": s["upload"]["path"], "rel": rel})
     emit("upload_queued", file=str(path))
 
 
 def upload_worker():
     while True:
-        path, remote, base, rel = uploads.get()
+        job_id, j = JOBS.queue("upload").get()
+        path, remote, base, rel, error = j["path"], j["remote"], j["base"], j["rel"], None
         while job["thread"] and job["thread"].is_alive():  # don't share the Wi-Fi with a scan in progress
             time.sleep(1)
         dest = cloud.destination(remote.rstrip(":"), base, rel)
@@ -311,11 +312,12 @@ def upload_worker():
                 if attempt == 2 or isinstance(e, FileNotFoundError):
                     with stats_lock:
                         upload_stats["failed"] += 1
-                    emit("upload_failed", file=path, dest=dest,
-                         error="file was deleted" if isinstance(e, FileNotFoundError) else e.stderr.strip()[-300:])
+                    error = "file was deleted" if isinstance(e, FileNotFoundError) else e.stderr.strip()[-300:]
+                    emit("upload_failed", file=path, dest=dest, error=error)
                     break
                 time.sleep(5 * (attempt + 1))
         upload_stats["current"] = None
+        JOBS.finish(job_id, error)
 
 
 # ---------------------------------------------------------------- scan job
@@ -383,25 +385,35 @@ def save_raw(page, prefix, offset):
     return raw, name
 
 
-def process_page(page, raw, name, s, out_dir, backs):
+BACK_TEXT = {}  # raw back scan -> text read from it, computed once for side A and reused for side B
+
+
+def back_text_of(raw_back, s):
+    key = str(raw_back)
+    if key not in BACK_TEXT:  # also recomputed here after a restart, when the cache is gone
+        BACK_TEXT[key] = read_back(raw_back, s)
+    return BACK_TEXT[key]
+
+
+def process_page(page, raw, name, s, out_dir, back_raw=None):
     """Run the pipeline for one scanned side (background worker). Returns the saved path or None if skipped.
 
-    `backs` maps page index -> raw back scan; the scanner sends side A (back) before side B (picture),
-    so the AI step can read writing on the back even when backs aren't being saved.
+    `back_raw` is the raw scan of this picture's back (the scanner sends side A before side B), so writing on
+    the back can be read even when backs aren't being saved.
     """
     path = out_dir / name
     for old in sorted(RAW_DIR.glob("*.jpg"), key=os.path.getmtime)[:-RAW_KEEP]:
         old.unlink()
+        BACK_TEXT.pop(str(old), None)
     if page.side == "A":
-        backs[page.index] = raw
-        backs[("text", page.index)] = read_back(raw, s)  # the picture (side B) arrives next and uses it
+        back_text_of(raw, s)  # read now; the picture (side B) arrives next and reuses it
     want = {"picture": "B", "back": "A"}.get(s["sides"])
     if want and page.side != want:
         return None
     shutil.copyfile(raw, path)
     if s["crop"]:
         ff680w.autocrop(str(path))
-    if page.side == "A" and s["skip_blank_backs"] and s["sides"] != "back" and not backs.get(("text", page.index)):
+    if page.side == "A" and s["skip_blank_backs"] and s["sides"] != "back" and not back_text_of(raw, s):
         ink = ff680w.ink_fraction(ff680w._thumbnail(str(path)))
         if ink < s["blank_threshold"]:
             path.unlink()
@@ -421,7 +433,7 @@ def process_page(page, raw, name, s, out_dir, backs):
         enhance(path, enhanced, s)
         files.append(enhanced)
     rotation, rotation_decided = auto_rotation(path) if s["auto_rotate"] and page.side == "B" else (0, False)
-    back_text = backs.pop(("text", page.index), "") if page.side == "B" else ""
+    back_text = back_text_of(back_raw, s) if page.side == "B" and back_raw else ""
     md = dict(s["metadata"])
     if back_text:  # written on the back: keep it with the picture, and take a date from it if none was given
         md["description"] = "\n".join(x for x in (md["description"], "Written on back: " + back_text) if x)
@@ -436,8 +448,9 @@ def process_page(page, raw, name, s, out_dir, backs):
     if s["ai"]["enabled"] and page.side == "B":
         # slow (seconds per photo): runs in the background so the scanner keeps feeding; uploads after
         # the back goes to Claude only if on-device reading found nothing (writing it couldn't read)
-        raw_back = backs.pop(page.index, None)
-        ai_jobs.put((path, files, None if back_text else raw_back, rotation_decided, s))
+        JOBS.put("ai", {"path": str(path), "files": [str(f) for f in files],
+                        "raw_back": None if back_text else (str(back_raw) if back_raw else None),
+                        "rotation_decided": rotation_decided, "s": s})
     else:
         queue_uploads(files, s)
     return path
@@ -450,8 +463,6 @@ def queue_uploads(files, s):
 
 
 # ---------------------------------------------------------------- AI analysis (Claude on Vertex AI)
-
-ai_jobs = queue.Queue()
 
 
 def back_with_writing(raw_back, s, threshold=None):
@@ -504,34 +515,43 @@ def analyze_photo(path, files, raw_back, rotation_decided, s):
 
 def ai_worker():
     while True:
-        path, files, raw_back, rotation_decided, s = ai_jobs.get()
+        job_id, j = JOBS.queue("ai").get()
+        path, files, s, error = Path(j["path"]), [Path(f) for f in j["files"]], j["s"], None
         try:
-            analyze_photo(path, files, raw_back, rotation_decided, s)
+            analyze_photo(path, files, j["raw_back"], j["rotation_decided"], s)
         except Exception as e:  # keep the queue alive; the photo is already saved without AI metadata
-            msg = str(e)
-            if "credit balance is too low" in msg:
-                msg = "the Anthropic account has no API credit: top it up at https://platform.claude.com/dashboard"
-            emit("ai_failed", file=str(path), error=msg[:300])
-        queue_uploads(files, s)
+            error = str(e)
+            if "credit balance is too low" in error:
+                error = "the Anthropic account has no API credit: top it up at https://platform.claude.com/dashboard"
+            emit("ai_failed", file=str(path), error=error[:300])
+        queue_uploads([f for f in files if f.exists()], s)
+        JOBS.finish(job_id, error)
 
 
-process_jobs = queue.Queue()  # scanned sides waiting for crop/enhance/metadata, processed strictly in order
 progress_lock = threading.Lock()
+PROGRESS = {}  # scan job id -> counters for the status line (jobs resumed after a restart have none)
 
 
 def process_worker():
+    """Scanned sides are processed strictly in order (back pairing and duplicate checks depend on it)."""
     while True:
-        args, stats = process_jobs.get()
+        job_id, j = JOBS.queue("process").get()
+        stats, error = PROGRESS.get(j["batch"]), None
         try:
-            if process_page(*args):
+            saved = process_page(ff680w.Page(j["index"], j["side"], 0, 0, b""), Path(j["raw"]), j["name"], j["s"],
+                                 Path(j["out_dir"]), j["back_raw"] and Path(j["back_raw"]))
+            if saved and stats:
                 stats["saved"] += 1
         except Exception as e:  # one bad photo must not stop the rest; its raw scan is still in the cache
-            emit("process_failed", file=args[2], error=str(e)[:300])
-        with progress_lock:
-            stats["processed"] += 1
-            emit("processed", scanned=stats["scanned"], processed=stats["processed"])
-            if stats["scan_done"] and stats["processed"] == stats["scanned"]:
-                emit("processing_done", saved=stats["saved"])
+            error = str(e)[:300]
+            emit("process_failed", file=j["name"], error=error)
+        JOBS.finish(job_id, error)
+        if stats:
+            with progress_lock:
+                stats["processed"] += 1
+                emit("processed", scanned=stats["scanned"], processed=stats["processed"])
+                if stats["scan_done"] and stats["processed"] == stats["scanned"]:
+                    emit("processing_done", saved=stats["saved"])
 
 
 def scan_job(s):
@@ -540,8 +560,8 @@ def scan_job(s):
     out_dir = batch_dir / "Originals" if s["enhance_location"] == "split" else batch_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     emit("job_started", folder=str(batch_dir))
-    waiting, backs = None, {}
-    stats = {"scanned": 0, "processed": 0, "saved": 0, "scan_done": False}
+    waiting, back_raws, batch = None, {}, f"{time.time():.6f}"
+    stats = PROGRESS[batch] = {"scanned": 0, "processed": 0, "saved": 0, "scan_done": False}
     try:
         while not cancel.is_set():
             with ff680w.FF680W(s["host"]) as sc:
@@ -563,9 +583,17 @@ def scan_job(s):
                         mb, secs, side_started = len(page.jpeg) / 1e6, now - side_started, now
                         with progress_lock:
                             stats["scanned"] += 1
-                        process_jobs.put(((page._replace(jpeg=b""), raw, name, s, out_dir, backs), stats))
+                        if page.side == "A":
+                            back_raws[page.index] = raw
+                        back_raw = back_raws.pop(page.index, None) if page.side == "B" else None
+                        JOBS.put("process", {"index": page.index, "side": page.side, "raw": str(raw), "name": name,
+                                             "s": s, "out_dir": str(out_dir), "back_raw": back_raw and str(back_raw),
+                                             "batch": batch})
+                        st = getattr(sc, "last_side_stats", {})
                         emit("scanned", scanned=stats["scanned"], processed=stats["processed"], side=page.side,
-                             mb=round(mb, 2), secs=round(secs, 2), block_size=sc.block_size_accepted)
+                             mb=round(mb, 2), secs=round(secs, 2), block_size=sc.block_size_accepted,
+                             blocks=st.get("blocks"), max_block_kb=st.get("max_block", 0) // 1024,
+                             wait_s=round(st.get("wait_s", 0), 2), transfer_s=round(st.get("transfer_s", 0), 2))
                 elif not s["watch"]:
                     raise ff680w.ScannerError(describe_error(err))
                 elif err != waiting:
@@ -767,9 +795,46 @@ def rotate(body: dict):
     return {"rotation": get_rotation(p)}
 
 
+ENHANCE_KEYS = {"red_eye", "restore", "auto", *enhancer.MANUAL}
+_eye_cache = {}  # path -> eye positions (Vision is slow enough to notice while dragging a slider)
+
+
+@app.get("/api/preview")
+def preview(file: str, opts: str = "{}", original: bool = False):
+    """A real photo at preview size, with the given enhancement options applied (or untouched if original)."""
+    import io
+
+    from fastapi.responses import Response
+    from PIL import Image
+
+    p = safe_path(file)
+    im = Image.open(p)
+    full_width, rotation = im.width, get_rotation(p)
+    im.draft("RGB", (1000, 1000))
+    im = im.convert("RGB")
+    im.thumbnail((1000, 1000))
+    if not original:
+        o = {k: v for k, v in json.loads(opts).items() if k in ENHANCE_KEYS}
+        eyes = ()
+        if o.get("red_eye"):
+            if str(p) not in _eye_cache:
+                _eye_cache[str(p)] = enhancer.find_eyes(p)
+            k = im.width / full_width  # eye positions are in full-size pixels
+            eyes = [(x * k, y * k, r * k) for x, y, r in _eye_cache[str(p)]]
+        im, _ = enhancer.enhance_image(im, eyes, **o)
+    if rotation:  # show it the way photo apps will
+        im = im.rotate(-rotation, expand=True)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85)
+    return Response(buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/enhance")
 def enhance_one(body: dict):
+    """Enhanced copy of one photo, with the saved options or {"opts": {...}} from the adjust dialog."""
     s = load_settings()
+    if body.get("opts"):
+        s = {**s, "enhance_opts": {**s["enhance_opts"], **{k: v for k, v in body["opts"].items() if k in ENHANCE_KEYS}}}
     p = safe_path(body["file"])
     if p.stem.endswith("_enhanced"):  # re-enhance from the original, never stack enhancements
         original = original_of(p, s)
@@ -883,7 +948,8 @@ def analyze(body: dict):
         files = [p] + [x for x in [enhanced_path(p, s)] if x.exists()]
         back = p.with_name(p.stem + "_back.jpg")
         # an existing rotation (faces or the user) wins over the AI's guess
-        ai_jobs.put((p, files, back if back.exists() else None, get_rotation(p) != 0, s))
+        JOBS.put("ai", {"path": str(p), "files": [str(f) for f in files], "raw_back": str(back) if back.exists() else None,
+                        "rotation_decided": get_rotation(p) != 0, "s": s})
         queued += 1
     return {"queued": queued}
 
@@ -991,6 +1057,11 @@ def upload(body: dict):
 app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
 
 if __name__ == "__main__":
+    JOBS.prune()
+    pending = JOBS.counts()
+    if pending:  # work queued before the last shutdown is picked up again by the workers
+        print("Resuming unfinished work:", ", ".join(f"{n} {kind}" for kind, n in pending.items()))
+        emit("resumed", **pending)
     threading.Thread(target=upload_worker, daemon=True).start()
     threading.Thread(target=ai_worker, daemon=True).start()
     threading.Thread(target=process_worker, daemon=True).start()

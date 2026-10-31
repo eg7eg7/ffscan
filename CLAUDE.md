@@ -48,6 +48,13 @@ script, syntax-check it (extract the `<script>` block and run `node --check`).
 | `ffscan/static/` | `index.html` (whole UI, vanilla JS) and `help.html` |
 | `tools/orient.swift` | Apple Vision CLI: face-roll orientation and `--eyes`; compiled by `run.sh` |
 
+## Durable queues
+
+`ffscan/jobs.py`: processing, AI and upload work is a row in SQLite (`DATA_DIR/jobs.db`) before it runs and is
+marked done after, so a restart resumes it in order. Payloads must be JSON (paths as strings). Picture jobs carry
+`back_raw` (their back's raw scan) instead of relying on in-memory pairing. SQLite was chosen over MongoDB: no
+server to run, and it works the same natively and in Docker.
+
 ## Pipeline (per scanned side)
 
 The scan loop (`app.scan_job`) only calls `save_raw` and queues the side: never add slow work there, or the

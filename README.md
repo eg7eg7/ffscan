@@ -24,6 +24,10 @@ organised into albums, tagged and optionally uploaded to the cloud.
   and where enhanced copies go: by default each album is split into `Originals/` and `Enhanced/`.
 - **Full-speed scanning:** the scanner never waits for processing; crop, enhancement and metadata run in the
   background while the next photos feed.
+- **Adjust & preview:** brightness, contrast, saturation, warmth and sharpness sliders with a live before/after
+  on one of your own photos; save as the default or apply to selected photos.
+- **Picks up where it left off:** queued processing, AI analysis and uploads are kept in a small SQLite file, so
+  they resume after a restart or crash.
 - **Enhanced copies** (originals are always kept):
   - Remove red-eye: Apple Vision finds the eyes, and only red pixels inside them are changed.
   - Restore faded colours.
@@ -193,7 +197,7 @@ with FF680W() as scanner:                  # finds the scanner on the network
 | What | Where |
 |---|---|
 | Your scans | The **Save to** folder (default `~/Pictures/Scans`): one folder per album or date, with `Originals/` and `Enhanced/` inside |
-| Settings, upload record, duplicate index | `~/Library/Application Support/FF680W/` |
+| Settings, upload record, duplicate index, work queue (`jobs.db`) | `~/Library/Application Support/FF680W/` |
 | Thumbnails and the last 300 untouched scans | `~/Library/Caches/FF680W/` |
 | Anthropic API key | macOS Keychain, item `ff680w-anthropic` |
 | Cloud account tokens | rclone's config, `~/.config/rclone/rclone.conf` |
