@@ -159,8 +159,9 @@
       <label class="row" data-tip="Finds eyes with Apple's face detection and neutralises red flash reflections in the pupils. Only strongly red pixels inside the eyes are changed; skin is left alone."><input type="checkbox" data-key="enhance_opts.red_eye"> Remove red-eye</label>
       <label class="row" data-tip="Old prints fade unevenly and drift to a red or magenta cast. This rebalances each colour channel to bring back contrast and neutral colours."><input type="checkbox" data-key="enhance_opts.restore"> Restore faded colours</label>
       <label class="row" data-tip="Measures brightness, contrast and colour saturation of each photo and nudges them toward a natural look: dark photos get lighter, flat ones more contrast, dull ones more colour. Adds slight sharpening."><input type="checkbox" data-key="enhance_opts.auto"> Auto brightness, contrast &amp; saturation</label>
-      <label data-tip="Next to the original: same folder, named …_enhanced.jpg. Enhanced subfolder: an 'Enhanced' folder inside each album. Another folder: a separate place of your choice, with the same album subfolders. Cloud uploads keep this layout.">Save enhanced copies
+      <label data-tip="Originals / Enhanced folders: each album gets an Originals folder for the scans and an Enhanced folder for the improved copies. Next to the original: same folder, named …_enhanced.jpg. Enhanced subfolder: an 'Enhanced' folder inside each album. Another folder: a separate place of your choice, with the same album subfolders. Cloud uploads keep this layout.">Save enhanced copies
         <select data-key="enhance_location">
+          <option value="split">Originals / Enhanced folders</option>
           <option value="same">Next to the original</option>
           <option value="subfolder">In an "Enhanced" subfolder</option>
           <option value="folder">In another folder…</option>
@@ -516,6 +517,7 @@ $("#pickEnhance").onclick = async () => {
 };
 
 // ---------- scanner status
+function setStatus(text, cls) { $("#status").textContent = text; $("#status").className = cls || ""; }
 async function checkScanner() {
   const st = $("#status");
   st.textContent = "Checking scanner…"; st.className = "";
@@ -759,7 +761,17 @@ function handleEvent(e) {
     case "upload_queued": setCloud(e.file, "queued"); break;
     case "uploaded": setCloud(e.file, "uploaded", e.dest); if (age < 5) log("Uploaded → " + e.dest); break;
     case "upload_failed": setCloud(e.file, "failed", e.dest); if (age < 5) log(`Upload failed (${e.dest}): ${e.error}`, true); break;
-    case "job_done": setScanning(false); log(`Done: ${e.count} photo(s)${e.cancelled ? " (stopped)" : ""}`); checkScanner(); break;
+    case "scanned": case "processed":
+      if (age < 5) setStatus(`Scanning… ${e.scanned} scanned · ${e.processed} processed`, "ok");
+      break;
+    case "job_done":
+      setScanning(false);
+      if (age < 5) log(`Scanner finished: ${e.count} side(s) scanned${e.cancelled ? " (stopped)" : ""}; processing continues in the background`);
+      break;
+    case "processing_done":
+      if (age < 5) { log(`All done: ${e.saved} photo(s) saved`); checkScanner(); }
+      break;
+    case "process_failed": if (age < 5) log(`Couldn't process ${e.file}: ${e.error}`, true); break;
     case "job_failed": setScanning(false); log("Scan failed: " + e.error, true); checkScanner(); break;
   }
 }

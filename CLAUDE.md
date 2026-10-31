@@ -48,9 +48,13 @@ script, syntax-check it (extract the `<script>` block and run `node --check`).
 | `ffscan/static/` | `index.html` (whole UI, vanilla JS) and `help.html` |
 | `tools/orient.swift` | Apple Vision CLI: face-roll orientation and `--eyes`; compiled by `run.sh` |
 
-## Pipeline (per scanned side, in `app.process_page`)
+## Pipeline (per scanned side)
 
-save raw copy → side filter → crop → blank-back check → duplicate check → enhanced copy → face rotation →
+The scan loop (`app.scan_job`) only calls `save_raw` and queues the side: never add slow work there, or the
+scanner stalls. `process_worker` runs `app.process_page` strictly in order (back pairing and duplicate checks
+depend on it):
+
+copy raw into the album (`Originals/` in the default split layout) → side filter → crop → blank-back check → duplicate check → enhanced copy → face rotation →
 metadata → emit `photo` event → AI analysis (background queue) **or** upload queue. The AI worker queues the
 uploads after it has written its metadata.
 

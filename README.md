@@ -21,7 +21,9 @@ organised into albums, tagged and optionally uploaded to the cloud.
 - **Auto-crop and straighten**, so each file is just the photo, without the grey scanner background.
 - **Backs of prints:** save the picture only, the back too, or skip backs that have no writing on them.
 - **Your file names and folders:** a file-name prefix with `{album}`/`{date}` (numbering never overwrites),
-  and a choice of where enhanced copies go (next to the original, an *Enhanced* subfolder, or another folder).
+  and where enhanced copies go: by default each album is split into `Originals/` and `Enhanced/`.
+- **Full-speed scanning:** the scanner never waits for processing; crop, enhancement and metadata run in the
+  background while the next photos feed.
 - **Enhanced copies** (originals are always kept):
   - Remove red-eye: Apple Vision finds the eyes, and only red pixels inside them are changed.
   - Restore faded colours.
@@ -186,7 +188,7 @@ with FF680W() as scanner:                  # finds the scanner on the network
 
 | What | Where |
 |---|---|
-| Your scans | The **Save to** folder (default `~/Pictures/Scans`), one subfolder per album or date |
+| Your scans | The **Save to** folder (default `~/Pictures/Scans`): one folder per album or date, with `Originals/` and `Enhanced/` inside |
 | Settings, upload record, duplicate index | `~/Library/Application Support/FF680W/` |
 | Thumbnails and the last 300 untouched scans | `~/Library/Caches/FF680W/` |
 | Anthropic API key | macOS Keychain, item `ff680w-anthropic` |

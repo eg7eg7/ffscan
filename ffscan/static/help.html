@@ -60,7 +60,8 @@
   <li>Check the status at the top says <strong>Ready: photos loaded</strong>. Press <strong>Refresh</strong> after loading photos.</li>
   <li>Choose where to save under <strong>Save to</strong>, and optionally an <strong>Album</strong> name.</li>
   <li>Pick your <a href="#scan">scan settings</a> and fill in any <a href="#metadata">metadata</a> for the batch.</li>
-  <li>Press <strong>Scan</strong>. Photos feed one by one and appear in the grid as each one finishes.</li>
+  <li>Press <strong>Scan</strong>. The scanner feeds at full speed; cropping, enhancing and metadata happen in the background,
+    and photos appear in the grid as each one is ready. The status line shows how many are scanned and processed.</li>
   <li>When the feeder is empty the scan ends by itself, unless <em>Keep scanning as I load more photos</em> is on. Press <strong>Stop</strong> at any time; the photo in progress is ejected and the scan cancelled cleanly.</li>
 </ol>
 <p class="tip">Settings are remembered between sessions. Change them only when a batch needs something different.</p>
@@ -111,8 +112,9 @@
   <dt>Also save an enhanced copy</dt>
   <dd>Saves a second file (<code>…_enhanced.jpg</code>) with the fixes ticked below it. The original is always kept, so you can compare and delete whichever you don't want.
     The <strong>Enhance</strong> button on each photo applies the same fixes to photos scanned earlier.
-    <strong>Save enhanced copies</strong> decides where they go: next to the original, in an <em>Enhanced</em> subfolder of each
-    album, or in another folder of your choice (with the same album subfolders). Enhanced copies show in the grid wherever
+    <strong>Save enhanced copies</strong> decides where they go. By default each album is split into an <em>Originals</em> folder
+    (the scans) and an <em>Enhanced</em> folder (the improved copies). You can also keep copies next to the original, in an
+    <em>Enhanced</em> subfolder, or in another folder of your choice (with the same album subfolders). Enhanced copies show in the grid wherever
     they are, and cloud uploads keep the same folder layout.
     <ul>
       <li><strong>Remove red-eye</strong>: Apple's face detection finds the eyes, and only strongly red pixels inside them are turned neutral. Skin and everything else stay untouched.</li>

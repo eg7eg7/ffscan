@@ -52,7 +52,9 @@ DEFAULTS = {
     "auto_rotate": True,
     "enhance": False,         # also save an enhanced copy (original kept), with these steps:
     "enhance_opts": {"red_eye": True, "restore": True, "auto": True},
-    "enhance_location": "same",  # same: next to the original | subfolder: <album>/Enhanced | folder: enhance_folder/<album>
+    # split: <album>/Originals + <album>/Enhanced | same: next to the original | subfolder: <album>/Enhanced
+    # | folder: enhance_folder/<album>
+    "enhance_location": "split",
     "enhance_folder": "",
     "name_prefix": "",        # file name prefix; empty = scan time. Tokens: {album} {date}
     "watch": False,           # keep scanning new stacks until stopped
@@ -249,12 +251,17 @@ def roots(s):
     return out
 
 
+def album_of(original):
+    """The album folder of an original: its folder, or the one above an 'Originals' folder."""
+    return original.parent.parent if original.parent.name == "Originals" else original.parent
+
+
 def enhanced_path(original, s, create=False):
     """Where the enhanced copy of `original` goes (same name + _enhanced), per the enhance_location setting."""
-    if s["enhance_location"] == "subfolder":
-        folder = original.parent / "Enhanced"
+    if s["enhance_location"] in ("split", "subfolder"):
+        folder = album_of(original) / "Enhanced"
     elif s["enhance_location"] == "folder" and s["enhance_folder"]:
-        folder = Path(s["enhance_folder"]).expanduser() / original.parent.name  # keep album subfolders
+        folder = Path(s["enhance_folder"]).expanduser() / album_of(original).name  # keep album subfolders
     else:
         folder = original.parent
     if create:
@@ -265,8 +272,9 @@ def enhanced_path(original, s, create=False):
 def original_of(enhanced, s):
     """The original of an _enhanced copy, wherever the copy was saved; None if it's gone."""
     name = enhanced.stem.removesuffix("_enhanced") + ".jpg"
-    candidates = [enhanced.with_name(name), enhanced.parent.parent / name,
-                  Path(s["folder"]).expanduser() / enhanced.parent.name / name]
+    album = Path(s["folder"]).expanduser() / enhanced.parent.name
+    candidates = [enhanced.with_name(name), enhanced.parent.parent / name, enhanced.parent.parent / "Originals" / name,
+                  album / name, album / "Originals" / name]
     return next((c for c in candidates if c.exists()), None)
 
 
@@ -286,16 +294,22 @@ def next_number(batch_dir, prefix):
     return max(used, default=0)
 
 
-def process_page(page, s, batch_dir, prefix, offset, backs):
-    """Save one scanned side and run the pipeline. Returns the saved path or None if skipped.
+def save_raw(page, prefix, offset):
+    """The only work done while the scanner is feeding: write the untouched scan to disk (milliseconds)."""
+    name = f"{prefix}_{offset + page.index + 1:03d}{'' if page.side == 'B' else '_back'}.jpg"
+    RAW_DIR.mkdir(parents=True, exist_ok=True)  # untouched scans also let crop/rotate bugs be reprocessed
+    raw = RAW_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{name}"  # unique even with a fixed prefix
+    raw.write_bytes(page.jpeg)
+    return raw, name
+
+
+def process_page(page, raw, name, s, out_dir, backs):
+    """Run the pipeline for one scanned side (background worker). Returns the saved path or None if skipped.
 
     `backs` maps page index -> raw back scan; the scanner sends side A (back) before side B (picture),
     so the AI step can read writing on the back even when backs aren't being saved.
     """
-    path = batch_dir / f"{prefix}_{offset + page.index + 1:03d}{'' if page.side == 'B' else '_back'}.jpg"
-    RAW_DIR.mkdir(parents=True, exist_ok=True)  # untouched scan, so crop/rotate bugs can be reprocessed
-    raw = RAW_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{path.name}"  # unique even with a fixed prefix
-    raw.write_bytes(page.jpeg)
+    path = out_dir / name
     for old in sorted(RAW_DIR.glob("*.jpg"), key=os.path.getmtime)[:-RAW_KEEP]:
         old.unlink()
     if page.side == "A":
@@ -303,7 +317,7 @@ def process_page(page, s, batch_dir, prefix, offset, backs):
     want = {"picture": "B", "back": "A"}.get(s["sides"])
     if want and page.side != want:
         return None
-    path.write_bytes(page.jpeg)
+    shutil.copyfile(raw, path)
     if s["crop"]:
         ff680w.autocrop(str(path))
     if page.side == "A" and s["skip_blank_backs"] and s["sides"] != "back":
@@ -410,12 +424,33 @@ def ai_worker():
         queue_uploads(files, s)
 
 
+process_jobs = queue.Queue()  # scanned sides waiting for crop/enhance/metadata, processed strictly in order
+progress_lock = threading.Lock()
+
+
+def process_worker():
+    while True:
+        args, stats = process_jobs.get()
+        try:
+            if process_page(*args):
+                stats["saved"] += 1
+        except Exception as e:  # one bad photo must not stop the rest; its raw scan is still in the cache
+            emit("process_failed", file=args[2], error=str(e)[:300])
+        with progress_lock:
+            stats["processed"] += 1
+            emit("processed", scanned=stats["scanned"], processed=stats["processed"])
+            if stats["scan_done"] and stats["processed"] == stats["scanned"]:
+                emit("processing_done", saved=stats["saved"])
+
+
 def scan_job(s):
     cancel = job["cancel"]
     batch_dir = Path(s["folder"]).expanduser() / (s["metadata"]["album"].strip() or time.strftime("%Y-%m-%d"))
-    batch_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = batch_dir / "Originals" if s["enhance_location"] == "split" else batch_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
     emit("job_started", folder=str(batch_dir))
-    waiting, count, backs = None, 0, {}
+    waiting, backs = None, {}
+    stats = {"scanned": 0, "processed": 0, "saved": 0, "scan_done": False}
     try:
         while not cancel.is_set():
             with ff680w.FF680W(s["host"]) as sc:
@@ -431,8 +466,11 @@ def scan_job(s):
                         if cancel.is_set():
                             pages.close()  # sends CAN to the scanner
                             break
-                        if process_page(page, s, batch_dir, prefix, offset, backs):
-                            count += 1
+                        raw, name = save_raw(page, prefix, offset)  # fast: the scanner keeps feeding
+                        with progress_lock:
+                            stats["scanned"] += 1
+                        process_jobs.put(((page._replace(jpeg=b""), raw, name, s, out_dir, backs), stats))
+                        emit("scanned", scanned=stats["scanned"], processed=stats["processed"])
                 elif not s["watch"]:
                     raise ff680w.ScannerError(describe_error(err))
                 elif err != waiting:
@@ -441,9 +479,14 @@ def scan_job(s):
             if not s["watch"]:
                 break
             cancel.wait(2)
-        emit("job_done", count=count, cancelled=cancel.is_set())
+        emit("job_done", count=stats["scanned"], cancelled=cancel.is_set())
     except Exception as e:
-        emit("job_failed", error=str(e), count=count)
+        emit("job_failed", error=str(e), count=stats["scanned"])
+    finally:
+        with progress_lock:
+            stats["scan_done"] = True
+            if stats["processed"] == stats["scanned"]:  # the worker already caught up
+                emit("processing_done", saved=stats["saved"])
 
 
 def describe_error(err):
@@ -820,4 +863,5 @@ app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
 if __name__ == "__main__":
     threading.Thread(target=upload_worker, daemon=True).start()
     threading.Thread(target=ai_worker, daemon=True).start()
+    threading.Thread(target=process_worker, daemon=True).start()
     uvicorn.run(app, host=os.environ.get("FFSCAN_BIND", "127.0.0.1"), port=int(os.environ.get("FFSCAN_PORT", 8680)))

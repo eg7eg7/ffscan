@@ -29,6 +29,8 @@ Day-to-day tracking happens on the [project board](https://github.com/users/eg7e
 - **Safe delete:** photos go to the macOS Trash.
 - **File-name prefix** (`{album}`, `{date}`; numbering continues, never overwrites) and **enhanced-copy location**
   (same folder, *Enhanced* subfolder, or another folder; uploads mirror the layout).
+- **Full-speed scanning:** the scan loop only writes each scan; a background worker processes photos in order.
+- **Album layout** `Originals/` + `Enhanced/` (default).
 - **Docker image** (`Dockerfile`, `docker-compose.yml`) running everything that doesn't need macOS.
 - **Settings sidebar** in collapsible sections with live summaries, and an Activity log pinned to the window.
 

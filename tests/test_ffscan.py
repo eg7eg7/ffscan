@@ -120,6 +120,17 @@ with tempfile.TemporaryDirectory() as tmp:
         assert app.original_of(e, st) == original, (loc, e)
     assert app.enhanced_path(original, {**s, "enhance_location": "subfolder"}).parent.name == "Enhanced"
 
+    # split layout: <album>/Originals/x.jpg <-> <album>/Enhanced/x_enhanced.jpg
+    (album / "Originals").mkdir()
+    kept = album / "Originals" / "Summer 87_003.jpg"
+    kept.write_bytes(b"")
+    st = {**s, "enhance_location": "split"}
+    e = app.enhanced_path(kept, st, create=True)
+    assert e == album / "Enhanced" / "Summer 87_003_enhanced.jpg", e
+    e.write_bytes(b"")
+    assert app.original_of(e, st) == kept
+    assert app.next_number(album, "Summer 87") == 7  # numbering sees Originals/ and Enhanced/ too
+
 from ffscan.photo_ai import to_metadata
 
 r = {"rotation": 0, "caption": "Kids at the beach.", "tags": ["beach"], "date_estimate": "1980s",
