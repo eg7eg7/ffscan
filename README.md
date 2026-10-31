@@ -55,6 +55,10 @@ organised into albums, tagged and optionally uploaded to the cloud.
 
 ## Quick start (macOS)
 
+**Before you start: install Epson's driver.** On Epson's
+[FF-680W support page](https://epson.com/Support/Scanners/FastFoto-Series/Epson-FastFoto-FF-680W/s/SPT_B11B237201?review-filter=macOS+27.x+%28Golden+Gate%29),
+download and install the **Scanner Driver** and the **Epson Scan 2 Utility**. You don't need the FastFoto app.
+
 Everything below is a one-time setup. Copy and paste each block into **Terminal**.
 
 **1. Apple's command line tools** (includes `git` and the Swift compiler). Skip this if `xcode-select -p`
