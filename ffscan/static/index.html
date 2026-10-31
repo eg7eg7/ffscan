@@ -232,7 +232,9 @@
     <label data-tip="Stops the scan if two photos stick together and feed at once, so none get skipped. Sensitive catches more but may stop on thick or curled photos. Off never stops.">Double-feed detection
       <select data-key="double_feed" data-type="int"><option value="1">Normal</option><option value="3">Sensitive</option><option value="0">Off</option></select></label>
     <label data-tip="JPEG compression, 50–100. 90 is visually lossless for prints; 95–100 gives bigger files with little visible gain.">JPEG quality <input type="number" min="50" max="100" data-key="quality" data-type="int"></label>
-    <label data-tip="Leave empty: USB if the scanner is plugged into this Mac (much faster at 600 dpi), otherwise it's found on your network. Type usb for USB only, or the scanner's network name (EPSONxxxxxx.local) or IP address for Wi-Fi only.">Address <input type="text" data-key="host" placeholder="automatic"></label>
+    <label data-tip="How the app reaches the scanner. Automatic uses USB when the scanner is plugged into this Mac (much faster at 600 dpi) and Wi-Fi otherwise. The status line at the top shows which one is in use.">Connection
+      <select data-key="connection"><option value="auto">Automatic (USB if plugged in)</option><option value="usb">USB only</option><option value="wifi">Wi-Fi only</option></select></label>
+    <label data-tip="The scanner&#39;s Wi-Fi address. Leave empty and it&#39;s found on your network automatically; if that fails, enter its network name (EPSONxxxxxx.local) or IP address from the scanner&#39;s network status sheet. With Connection on Automatic, an address here means Wi-Fi is used.">Wi-Fi address <input type="text" data-key="host" placeholder="automatic"></label>
     <div id="device" class="hint"></div>
     </details>
   </aside>
@@ -434,7 +436,7 @@ function updateSummaries() {
     metadata: join([s.metadata?.album, s.metadata?.date, s.metadata?.place]) || "none",
     cloud: s.upload?.remote ? join([s.upload.remote, s.upload.enabled ? "auto" : "manual"]) : "not connected",
     ai: s.ai?.enabled ? (s.ai.provider === "vertex" ? "on · Vertex AI" : "on · Anthropic") : "off",
-    advanced: join([s.host || "auto-detect", `JPEG ${s.quality}`]),
+    advanced: join([{ auto: "USB or Wi-Fi", usb: "USB", wifi: "Wi-Fi" }[s.connection], s.connection !== "usb" && s.host, `JPEG ${s.quality}`]),
   };
   for (const [k, v] of Object.entries(sums)) {
     const el = document.querySelector(`.sum[data-sum="${k}"]`); if (el) { el.textContent = v; el.title = v; }
@@ -681,7 +683,7 @@ async function checkScanner() {
   const st = $("#status");
   st.textContent = "Checking scanner…"; st.className = "";
   const r = await api("/api/scanner");
-  st.textContent = r.message;
+  st.textContent = r.message + (r.via ? ` (${r.via})` : "");
   st.className = !r.online ? "bad" : r.busy || r.ready ? "ok" : "warn";
   if (r.model) $("#device").textContent = `${r.model} · S/N ${r.serial} · firmware ${r.firmware}`;
 }

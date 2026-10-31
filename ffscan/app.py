@@ -37,7 +37,8 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 ORIENT = ROOT.parent / "tools" / "orient"
 RAW_DIR, RAW_KEEP = CACHE_DIR / "raw", 300  # last N untouched scans
 DEFAULTS = {
-    "host": os.environ.get("FFSCAN_SCANNER", ""),  # empty: find the scanner on the network automatically
+    "connection": "auto",     # auto (USB if plugged in, else Wi-Fi) | usb | wifi
+    "host": os.environ.get("FFSCAN_SCANNER", ""),  # Wi-Fi address; empty: find the scanner on the network
     "folder": os.environ.get("FFSCAN_PHOTOS_DIR", str(Path.home() / "Pictures" / "Scans")),
     "dpi": 300,
     "color": "C024",          # C024 colour, M008 greyscale
@@ -602,7 +603,7 @@ def scan_job(s):
     stats = PROGRESS[batch] = {"scanned": 0, "processed": 0, "saved": 0, "scan_done": False}
     try:
         while not cancel.is_set():
-            with ff680w.FF680W(s["host"]) as sc:
+            with ff680w.FF680W(s["host"], transport=s["connection"]) as sc:
                 err = sc.status().get("ERR")
                 if not err:
                     waiting = None
@@ -756,9 +757,9 @@ def scanner_status():
     if job["thread"] and job["thread"].is_alive():
         return {"online": True, "busy": True, "message": "Scanning..."}
     try:
-        with ff680w.FF680W(s["host"], timeout=15) as sc:  # 5 s timed out once (scanner waking from sleep?)
-            info, err = sc.info(), sc.status().get("ERR")
-        return {"online": True, "busy": False, "ready": not err,
+        with ff680w.FF680W(s["host"], timeout=15, transport=s["connection"]) as sc:  # 5 s timed out once (waking?)
+            info, err, via = sc.info(), sc.status().get("ERR"), "USB" if sc.usb else "Wi-Fi"
+        return {"online": True, "busy": False, "ready": not err, "via": via,
                 "message": describe_error(err) if err else "Ready: photos loaded.",
                 "model": info["PRD"][0][0].decode(), "serial": info["S/N"][0][0].decode(),
                 "firmware": info["PRV"][0][0].decode()}

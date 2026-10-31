@@ -519,17 +519,20 @@ class FF680W:
     LOCK = bytes([0x01, 0xA0, 0x04, 0x00, 0x00, 0x01, 0x2C])  # as sent by Epson's client
     BLOCK_SIZE = 1 << 20  # #BSZ image block size: 1 MiB, the same default Epson's own engine sends
 
-    def __init__(self, host=None, port=1865, timeout=60, verbose=False):
-        """host: the scanner's address, "usb", or empty for automatic (USB if it's plugged in, else the network)."""
-        self.host, self.port, self.timeout, self.verbose = host, port, timeout, verbose
+    def __init__(self, host=None, port=1865, timeout=60, verbose=False, transport="auto"):
+        """transport: "auto" (USB if it's plugged in, else the network), "usb" or "wifi".
+        host: the scanner's network address; empty = find it (also "usb", same as transport="usb")."""
+        if host == "usb":
+            host, transport = None, "usb"
+        self.host, self.port, self.timeout, self.verbose, self.transport = host, port, timeout, verbose, transport
         self.sock = self.usb = None
 
     def __enter__(self):
-        if self.host in (None, "", "usb"):
+        if self.transport == "usb" or (self.transport == "auto" and not self.host):
             self.usb = _usb_device()
             if self.usb:
                 return self._enter_usb()
-            if self.host == "usb":
+            if self.transport == "usb":
                 raise ScannerError("no scanner on USB: is the cable plugged in? (USB needs: brew install libusb)")
         auto = not self.host
         if auto:
