@@ -26,6 +26,7 @@ and set Status to Done; when you discover new work, open an issue with labels. K
 .venv/bin/python tests/test_ffscan.py           # offline tests, no scanner needed; prints "ok"
 .venv/bin/python -m ffscan.ff680w status        # talk to a real scanner from the CLI
 docker build -t ffscan . && docker compose up   # container (macOS-only features disabled)
+tools/build-mac-app.sh                          # standalone dist/FFScan.app (pywebview window, PyInstaller)
 ```
 
 Restarting the app: `kill $(lsof -t -iTCP:8680 -sTCP:LISTEN)`, then `./run.sh`. The process name is `Python`
@@ -45,6 +46,7 @@ script, syntax-check it (extract the `<script>` block and run `node --check`).
 | `ffscan/dupes.py` | Perceptual-hash duplicate index |
 | `ffscan/photo_ai.py` | Claude analysis (Anthropic API or Vertex AI), structured JSON output |
 | `ffscan/cloud.py` | rclone remotes via its `--non-interactive` config protocol; upload destinations |
+| `ffscan/desktop.py` | Mac app entry: server thread + pywebview window; closing the window cancels a scan and exits |
 | `ffscan/static/` | `index.html` (whole UI, vanilla JS) and `help.html` |
 | `tools/orient.swift` | Apple Vision CLI: face-roll orientation and `--eyes`; compiled by `run.sh` |
 

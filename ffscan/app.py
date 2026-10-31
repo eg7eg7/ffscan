@@ -1205,7 +1205,14 @@ def upload(body: dict):
 
 app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
 
-if __name__ == "__main__":
+
+def startup():
+    """Before serving: the API key from the Keychain, then the workers (resuming work left from the last run)."""
+    if not os.environ.get("ANTHROPIC_API_KEY") and shutil.which("security"):
+        key = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+                             capture_output=True, text=True).stdout.strip()
+        if key:
+            os.environ["ANTHROPIC_API_KEY"] = key
     JOBS.prune()
     pending = JOBS.counts()
     if pending:  # work queued before the last shutdown is picked up again by the workers
@@ -1214,4 +1221,8 @@ if __name__ == "__main__":
     threading.Thread(target=upload_worker, daemon=True).start()
     threading.Thread(target=ai_worker, daemon=True).start()
     threading.Thread(target=process_worker, daemon=True).start()
+
+
+if __name__ == "__main__":
+    startup()
     uvicorn.run(app, host=os.environ.get("FFSCAN_BIND", "127.0.0.1"), port=int(os.environ.get("FFSCAN_PORT", 8680)))

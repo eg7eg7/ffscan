@@ -3,6 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# One ffscan at a time: if it's already running, show it (its window, or the page in the browser) and stop here.
+if curl -s -o /dev/null "http://localhost:${FFSCAN_PORT:-8680}" && [ -x .venv/bin/python ]; then
+  exec .venv/bin/python -c "from ffscan.desktop import show_running; show_running()"
+fi
+
 missing=()
 for tool in exiftool rclone; do
   command -v "$tool" >/dev/null || missing+=("$tool")
@@ -23,11 +28,10 @@ if [ ! -x tools/orient ] || [ tools/orient.swift -nt tools/orient ]; then
   swiftc -O tools/orient.swift -o tools/orient
 fi
 
-# Anthropic API key for AI analysis: saved from the app (AI analysis → API key) into the macOS Keychain,
-# never into a file. Loaded here so the app has it after a restart.
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  ANTHROPIC_API_KEY=$(security find-generic-password -s ff680w-anthropic -w 2>/dev/null || true)
-  [ -n "$ANTHROPIC_API_KEY" ] && export ANTHROPIC_API_KEY
+# --window: ffscan in its own window (FFScan.command); closing it stops the app.
+if [ "${1:-}" = "--window" ]; then
+  .venv/bin/pip install -q -r requirements-desktop.txt
+  exec .venv/bin/python -m ffscan.desktop
 fi
 
 PORT="${FFSCAN_PORT:-8680}"

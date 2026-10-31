@@ -97,10 +97,15 @@ The first run takes about a minute. It creates a Python environment, installs th
 the small Apple Vision helper. Then it opens **http://localhost:8680** in your browser. Stop the app with
 `Ctrl-C`; start it again any time with `./run.sh` from the `ffscan` folder.
 
-For a double-click icon instead, run `tools/make-desktop-app.sh` once. It puts **FFScan** on the Desktop:
-opening it starts ffscan in the background (or just opens the page if it's already running) and shows a
-message if something goes wrong. The log is in `~/Library/Logs/ffscan.log`. Run the script again if you move
-the `ffscan` folder.
+**Double-click to start.** `FFScan.command` in the `ffscan` folder does the same as `./run.sh` but opens ffscan
+in its own window; closing the window stops it. Drag it to the Dock, or make a Desktop shortcut:
+right-click it → *Make Alias*, then move the alias to the Desktop.
+
+**A Mac app instead.** `tools/build-mac-app.sh` builds `dist/FFScan.app`, a standalone app with Python,
+exiftool, rclone and libusb inside, so you can copy it to another Mac that has nothing installed. It opens
+ffscan in its own window, and quitting the window stops everything. It isn't signed with an Apple developer ID, so
+on another Mac the first launch is blocked: open *System Settings → Privacy & Security* and press **Open Anyway**. To try the window without building, run
+`.venv/bin/pip install -r requirements-desktop.txt` and then `.venv/bin/python -m ffscan.desktop`.
 
 **5. Scan**
 
