@@ -118,12 +118,89 @@ def get_rotation(path):
     return TAG_ORIENTATION.get(int(out), 0) if out.isdigit() else 0
 
 
+# Vision scene-classifier confidence an orientation must beat "as scanned" by before a photo without faces is
+# rotated. Measured on 14 photos with a clear "up": 12/14 right at 1.0 (leaving all as scanned: 7/14);
+# a brightness/texture heuristic managed only 6/12 and was dropped.
+SCENE_MARGIN = 1.0
+
+
 def auto_rotation(path):
-    """(degrees clockwise, faces found) from Apple Vision face roll; faces=0 means 'no opinion'."""
+    """(degrees clockwise, decided) on-device: Vision face roll when there are faces (exact), else Vision's scene
+    classifier when it is clearly more confident about another orientation. decided=False means no opinion."""
     if not ORIENT.exists():
-        return 0, 0
+        return 0, False
     degrees, faces, _ = run([str(ORIENT), str(path)]).split("\t", 2)
-    return int(degrees), int(faces)
+    if int(faces):
+        return int(degrees), True
+    best, *scores = run([str(ORIENT), "--scene", str(path)]).split()
+    scores = [float(x) for x in scores]
+    if max(scores) - scores[0] >= SCENE_MARGIN:
+        return int(best), True
+    return 0, False
+
+
+DATE_PATTERNS = [  # handwritten dates on backs: 14.7.1986, 14/07/86, 7.1986, 1986
+    (re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4}|\d{2})\b"), "dmy"),
+    (re.compile(r"\b(\d{1,2})[./-](\d{4})\b"), "my"),
+    (re.compile(r"\b(19[0-9]{2}|20[0-9]{2})\b"), "y"),
+]
+
+
+def date_from_text(text):
+    """YYYY, YYYY-MM or YYYY-MM-DD from text written on a back, or "". Day/month order is taken as day first
+    unless that is impossible (European order), since US-style dates are less common on prints here."""
+    for pattern, kind in DATE_PATTERNS:
+        m = pattern.search(text)
+        if not m:
+            continue
+        if kind == "y":
+            return m.group(1)
+        if kind == "my":
+            month, year = int(m.group(1)), int(m.group(2))
+            return f"{year:04d}-{month:02d}" if 1 <= month <= 12 and 1900 <= year <= 2099 else ""
+        a, b, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        year += 1900 if year < 100 else 0
+        day, month = (b, a) if a <= 12 < b else (a, b)
+        if 1 <= month <= 12 and 1 <= day <= 31 and 1900 <= year <= 2099:
+            return f"{year:04d}-{month:02d}-{day:02d}"
+    return ""
+
+
+# paper-maker watermarks and their OCR fragments, printed on the backs of photo paper
+WATERMARK_WORDS = {"kodak", "koda", "kod", "dak", "odak", "fuji", "fujicolor", "fujifilm", "agfa", "konica", "ilford",
+                   "dnp", "quality", "paper", "made", "germany", "japan", "usa", "royal", "premium", "digital",
+                   "crystal", "archive", "professional", "photo", "print", "lustre", "glossy", "matte"}
+
+
+def human_text(text):
+    """Keep only lines that look written by a person, dropping paper watermarks and machine-printed lab codes.
+
+    A line is kept if it holds a date with separators (14.7.1986, 08/1992), at least two real words, or one word
+    plus a year ("Mom 1986"). Measured on real backs: Kodak/Agfa watermarks and codes like
+    "L3145CAXCNO.4A 2009" or "504 1111 NN N-12" are all dropped.
+    """
+    kept = []
+    for line in text.splitlines():
+        # standalone all-letter tokens only: letters glued to digits ("L3145CAXCNO") belong to a lab code
+        tokens = (t.strip(".-") for t in re.split(r"[\s,;:()\[\]•'\"!?]+", line))
+        words = [t for t in tokens if re.fullmatch(r"[^\W\d_]{3,}", t) and t.lower() not in WATERMARK_WORDS]
+        separated_date = any(p.search(line) for p, kind in DATE_PATTERNS if kind != "y")
+        year = re.search(r"(?<![\w.])(19[0-9]{2}|20[0-9]{2})(?![\w.])", line)
+        if separated_date or len(words) >= 2 or (words and year):
+            kept.append(line.strip())
+    return "\n".join(kept)
+
+
+def read_back(raw_back, s):
+    """On-device reading of handwriting or stamps on a print's back (Apple Vision); "" if none.
+
+    Ink alone can't tell one line of handwriting (~0.008) from printed lab codes (0.000-0.012), so any back
+    with marks is read, and human_text() decides what counts as writing.
+    """
+    back = back_with_writing(raw_back, s, threshold=0.002)
+    if not back or not ORIENT.exists():
+        return ""
+    return human_text(run([str(ORIENT), "--text", str(back)]))
 
 
 def enhance(src, dst, s):
@@ -317,13 +394,14 @@ def process_page(page, raw, name, s, out_dir, backs):
         old.unlink()
     if page.side == "A":
         backs[page.index] = raw
+        backs[("text", page.index)] = read_back(raw, s)  # the picture (side B) arrives next and uses it
     want = {"picture": "B", "back": "A"}.get(s["sides"])
     if want and page.side != want:
         return None
     shutil.copyfile(raw, path)
     if s["crop"]:
         ff680w.autocrop(str(path))
-    if page.side == "A" and s["skip_blank_backs"] and s["sides"] != "back":
+    if page.side == "A" and s["skip_blank_backs"] and s["sides"] != "back" and not backs.get(("text", page.index)):
         ink = ff680w.ink_fraction(ff680w._thumbnail(str(path)))
         if ink < s["blank_threshold"]:
             path.unlink()
@@ -342,9 +420,14 @@ def process_page(page, raw, name, s, out_dir, backs):
         enhanced = enhanced_path(path, s, create=True)
         enhance(path, enhanced, s)
         files.append(enhanced)
-    rotation, faces = auto_rotation(path) if s["auto_rotate"] and page.side == "B" else (0, 0)
+    rotation, rotation_decided = auto_rotation(path) if s["auto_rotate"] and page.side == "B" else (0, False)
+    back_text = backs.pop(("text", page.index), "") if page.side == "B" else ""
+    md = dict(s["metadata"])
+    if back_text:  # written on the back: keep it with the picture, and take a date from it if none was given
+        md["description"] = "\n".join(x for x in (md["description"], "Written on back: " + back_text) if x)
+        md["date"] = md["date"] or date_from_text(back_text)
     for f in files:
-        write_metadata(f, s["metadata"])
+        write_metadata(f, md)
         if rotation:
             set_rotation(f, rotation)
     for f in files:
@@ -352,7 +435,9 @@ def process_page(page, raw, name, s, out_dir, backs):
              duplicate_of=duplicate_of if f == path else None)
     if s["ai"]["enabled"] and page.side == "B":
         # slow (seconds per photo): runs in the background so the scanner keeps feeding; uploads after
-        ai_jobs.put((path, files, backs.pop(page.index, None), faces > 0, s))
+        # the back goes to Claude only if on-device reading found nothing (writing it couldn't read)
+        raw_back = backs.pop(page.index, None)
+        ai_jobs.put((path, files, None if back_text else raw_back, rotation_decided, s))
     else:
         queue_uploads(files, s)
     return path
@@ -369,8 +454,8 @@ def queue_uploads(files, s):
 ai_jobs = queue.Queue()
 
 
-def back_with_writing(raw_back, s):
-    """Crop a temp copy of the raw back and return it if it has writing (saves sending blank backs)."""
+def back_with_writing(raw_back, s, threshold=None):
+    """Crop a temp copy of the raw back and return it if it has marks (saves sending blank backs)."""
     import shutil
     import tempfile
 
@@ -379,7 +464,7 @@ def back_with_writing(raw_back, s):
     tmp = Path(tempfile.mkdtemp()) / "back.jpg"
     shutil.copy(raw_back, tmp)
     ff680w.autocrop(str(tmp))
-    return tmp if ff680w.ink_fraction(ff680w._thumbnail(str(tmp))) >= s["blank_threshold"] else None
+    return tmp if ff680w.ink_fraction(ff680w._thumbnail(str(tmp))) >= (threshold or s["blank_threshold"]) else None
 
 
 def ai_setup_problem(ai):
@@ -391,7 +476,7 @@ def ai_setup_problem(ai):
     return None
 
 
-def analyze_photo(path, files, raw_back, face_rotated, s):
+def analyze_photo(path, files, raw_back, rotation_decided, s):
     """Ask Claude about one picture, then apply rotation + metadata to all its files and queue uploads."""
     from . import photo_ai
 
@@ -401,9 +486,12 @@ def analyze_photo(path, files, raw_back, face_rotated, s):
         raise RuntimeError(problem)
     result = photo_ai.analyze(path, back_with_writing(raw_back, s), provider=ai["provider"], project=ai["project"],
                               region=ai["region"], model=ai["model"])
-    md = photo_ai.to_metadata(result, s["metadata"])
-    # Apple Vision's face roll is exact when it found faces; otherwise use Claude's judgement
-    rotation = None if face_rotated or not s["auto_rotate"] else result["rotation"]
+    existing = read_metadata(path)  # may hold text read from the back on-device
+    md = photo_ai.to_metadata(result, {**s["metadata"], "date": s["metadata"]["date"] or existing["date"]})
+    if existing["description"] and not s["metadata"]["description"]:  # keep the back's text after the caption
+        md["description"] = result["caption"] + "\n" + existing["description"]
+    # on-device rotation (faces, or a confident scene classifier) wins; Claude decides only when it had no opinion
+    rotation = None if rotation_decided or not s["auto_rotate"] else result["rotation"]
     for f in files:
         write_metadata(f, md)
         if rotation is not None:
@@ -416,9 +504,9 @@ def analyze_photo(path, files, raw_back, face_rotated, s):
 
 def ai_worker():
     while True:
-        path, files, raw_back, face_rotated, s = ai_jobs.get()
+        path, files, raw_back, rotation_decided, s = ai_jobs.get()
         try:
-            analyze_photo(path, files, raw_back, face_rotated, s)
+            analyze_photo(path, files, raw_back, rotation_decided, s)
         except Exception as e:  # keep the queue alive; the photo is already saved without AI metadata
             msg = str(e)
             if "credit balance is too low" in msg:

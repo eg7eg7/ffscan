@@ -109,9 +109,15 @@
   <dd>The scanner always captures its full 8.5″ width, so a photo sits on a grey background. This trims the background so the file is just the photo. Turn it off to keep the full scan.</dd>
   <dt>Straighten (deskew)</dt>
   <dd>The scanner straightens photos that fed in at a slight angle. The corners it fills in are trimmed by <em>Crop to photo</em>.</dd>
-  <dt>Auto-rotate (photos with faces)</dt>
-  <dd>Uses Apple's face detection to turn photos with people upright, whichever way they went in. Photos without people (landscapes, rooms, pets) are left as scanned. Use the ⟲ ⟳ buttons on those.
-    Rotation only changes an orientation tag in the file, so image quality is untouched. Every photo app respects it.</dd>
+  <dt>Auto-rotate</dt>
+  <dd>Turns photos upright on this Mac, without AI. Photos with people are turned by the angle of their faces, which is
+    exact. Other photos use Apple's on-device scene recognition, which turns a photo only when it is clearly more
+    confident about another orientation; in testing it got 12 of 14 photos right, and photos it isn't sure about stay
+    as scanned (use the ⟲ ⟳ buttons). Rotation only changes an orientation tag, so image quality is untouched.</dd>
+  <dt>Writing on the back</dt>
+  <dd>Whenever a print's back has handwriting, a stamp or a date, it is read on this Mac (no AI), even if you don't save
+    backs, and added to the picture's description as "Written on back: …". A date found there (e.g. 14.7.1986) becomes
+    the photo's date if you didn't give one. Paper-maker logos and lab codes are ignored.</dd>
   <dt>Also save an enhanced copy</dt>
   <dd>Saves a second file (<code>…_enhanced.jpg</code>) with the fixes ticked below it. The original is always kept, so you can compare and delete whichever you don't want.
     The <strong>Enhance</strong> button on each photo applies the same fixes to photos scanned earlier.
@@ -196,11 +202,11 @@
 <h2 id="ai">AI analysis (Claude)</h2>
 <p>When <strong>Analyse photos with Claude</strong> is on, every scanned picture is sent to Claude, Anthropic's AI model. This happens in the background while scanning continues. Claude:</p>
 <ul>
-  <li><strong>Turns the photo upright</strong>, including landscapes, rooms and other photos without faces. Photos with faces keep the on-device face-based rotation, which is exact.</li>
+  <li><strong>Turns the photo upright</strong> only when the on-device rotation had no clear answer.</li>
   <li>Writes a <strong>caption</strong> and <strong>tags</strong>. It never guesses people's names.</li>
   <li><strong>Estimates when</strong> the photo was taken from clothes, cars, print style and colour. A year goes into the date field; a decade becomes a tag like <code>c. 1980s</code>.</li>
   <li><strong>Guesses the place</strong> when it's recognisable.</li>
-  <li><strong>Reads the back</strong>: handwriting, stamps and dates, even when you don't save backs. A date written on the back wins over its estimate.</li>
+  <li><strong>Reads the back</strong> only when on-device reading found writing it couldn't read.</li>
 </ul>
 <p>It only fills <em>empty</em> fields. Anything you typed in the batch metadata is kept. To analyse photos scanned earlier, select them and press <strong>Analyse</strong>.</p>
 <h3>One-time setup: Anthropic API (default)</h3>

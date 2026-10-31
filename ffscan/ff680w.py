@@ -291,7 +291,7 @@ def _scan_subnet():
 
 class FF680W:
     LOCK = bytes([0x01, 0xA0, 0x04, 0x00, 0x00, 0x01, 0x2C])  # as sent by Epson's client
-    BLOCK_SIZE = 1 << 20  # requested image block size (#BSZ) and read-ahead per IMG request: 1 MiB
+    BLOCK_SIZE = 1 << 20  # #BSZ image block size: 1 MiB, the same default Epson's own engine sends
 
     def __init__(self, host=None, port=1865, timeout=60, verbose=False):
         self.host, self.port, self.timeout, self.verbose = host, port, timeout, verbose
@@ -336,17 +336,11 @@ class FF680W:
             raise ScannerError(f"unexpected packet type 0x{ptype:04x}")
         return payload
 
-    def command(self, cmd, params=b"", read_ahead=0):
-        """Send a 4-char command (+param block); return (64-byte reply header, body).
-
-        read_ahead > 0 lets the scanner return up to that many body bytes together with the header, saving a
-        network round trip per image block (each round trip is tens of ms on Wi-Fi). If the scanner only sends
-        the header, the body is pulled separately as before.
-        """
-        reply = self._xfer(cmd.encode() + b"x%07X" % len(params) + params, 64 + read_ahead)
-        hdr = reply[:64]
+    def command(self, cmd, params=b""):
+        """Send a 4-char command (+param block); return (64-byte reply header, body)."""
+        hdr = self._xfer(cmd.encode() + b"x%07X" % len(params) + params, 64)
         body_len = int(hdr[5:12], 16)
-        parts, got = [reply[64:64 + body_len]], len(reply[64:64 + body_len])
+        parts, got = [], 0
         while got < body_len:
             chunk = self._xfer(b"", body_len - got)
             parts.append(chunk)
@@ -387,7 +381,9 @@ class FF680W:
             f"#ADF{adf}#COL{color}#FMTJPG #JPGd{jpeg_quality:03d}#GMM{gamma}"
             f"#RSMi{dpi:07d}#RSSi{dpi:07d}#ACQi0000000i0000000i{width:07d}i{length:07d}"
         ).encode()
-        # larger image blocks mean fewer round trips; older firmware may not know #BSZ, so fall back without it
+        # image block size. Without #BSZ the scanner sends 64 KB blocks, each costing two Wi-Fi round trips
+        # (~8 s per 600 dpi side). Epson's engine sends BufferSizeValue from the model file, default 0x100000
+        # (SDEModelInfo -bufferSize). Fall back without it for firmware that rejects the key.
         hdr, _ = self.command("PARA", params + b"#BSZi%07d" % self.BLOCK_SIZE)
         self.block_size_accepted = b"#parOK" in hdr
         if not self.block_size_accepted:
@@ -399,7 +395,7 @@ class FF680W:
         index, parts, last = 0, {}, time.monotonic()
         try:
             while True:
-                hdr, block = self.command("IMG ", read_ahead=self.BLOCK_SIZE)
+                hdr, block = self.command("IMG ")
                 if hdr[:4] == b"INVD":
                     return  # transfer finished
                 t = tokens_to_dict(parse_tokens(hdr[12:]))

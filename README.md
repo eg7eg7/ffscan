@@ -28,12 +28,14 @@ organised into albums, tagged and optionally uploaded to the cloud.
   - Remove red-eye: Apple Vision finds the eyes, and only red pixels inside them are changed.
   - Restore faded colours.
   - Auto brightness, contrast and saturation.
-- **Auto-rotate:** photos with faces are turned upright on-device with Apple Vision. With AI analysis on, Claude
-  also rotates photos without people.
+- **Auto-rotate without AI:** faces set the angle when there are people; otherwise Apple's on-device scene
+  recognition turns a photo when it is clearly sure (12 of 14 right in testing; unsure photos stay as scanned).
+- **Reads the backs of prints without AI:** handwriting, stamps and dates are read on-device and added to the
+  picture's description; a written date becomes the photo's date. Paper logos and lab codes are ignored.
 - **Metadata written into the files** (EXIF/IPTC/XMP): album, date taken, place, people, tags and a description,
   so Apple Photos, Google Photos and Lightroom can search and sort them.
-- **AI analysis (optional):** Claude writes a caption and tags, estimates the year, guesses the place and
-  transcribes handwriting on the back. It only fills fields you left empty.
+- **AI analysis (optional):** Claude writes a caption and tags, estimates the year and guesses the place. It only
+  fills fields you left empty, and handles rotation or backs only where the on-device methods had no answer.
 - **Cloud upload** to Google Drive, Google Photos, Dropbox, OneDrive or Amazon S3 (and S3-compatible services),
   set up entirely in the app. It includes a folder browser, a progress bar and an *Uploaded* badge on every photo.
 - **Duplicate detection:** a visual fingerprint spots a print you've already scanned, even at another
@@ -214,7 +216,7 @@ The app listens on `127.0.0.1` only, so it isn't reachable from other devices. E
 
 - The full feature set needs macOS (Apple Vision, Bonjour, Keychain, folder picker); Docker runs the rest.
 - Tested with the FF-680W over Wi-Fi. USB and the scanner's own Scan button aren't supported yet.
-- Without AI analysis, auto-rotate only handles photos with faces.
+- On-device rotation leaves photos alone when it isn't sure (e.g. close-ups of foliage).
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for planned work, and the [project board](https://github.com/users/eg7eg7/projects/5) and
 [issues](https://github.com/eg7eg7/ffscan/issues) for what's being worked on.

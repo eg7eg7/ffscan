@@ -28,6 +28,44 @@ func perform(_ request: VNRequest, on image: CGImage) {
 
 var args = Array(CommandLine.arguments.dropFirst())
 
+if args.first == "--scene" {
+    // "<degrees>\t<s0>\t<s90>\t<s180>\t<s270>": per rotation, the summed confidence of the top-5 labels of
+    // Vision's on-device scene classifier. Classifiers are usually most confident on upright images.
+    for path in args.dropFirst() {
+        guard let image = load(path, maxSide: 512) else { continue }
+        var scores: [Double] = []
+        for orientation in [CGImagePropertyOrientation.up, .right, .down, .left] {
+            let request = VNClassifyImageRequest()
+            do { try VNImageRequestHandler(cgImage: image, orientation: orientation).perform([request]) } catch {}
+            let top = (request.results ?? []).sorted { $0.confidence > $1.confidence }.prefix(5)
+            scores.append(top.reduce(0.0) { $0 + Double($1.confidence) })
+        }
+        let best = scores.indices.max { scores[$0] < scores[$1] }!
+        print("\(best * 90)\t" + scores.map { String(format: "%.3f", $0) }.joined(separator: "\t"))
+    }
+    exit(0)
+}
+
+if args.first == "--text" {
+    // Text on the back of a print (handwriting, stamps), read on-device: one recognised line per output line.
+    // The back may be scanned in any orientation, so all four are tried and the most confident reading wins.
+    for path in args.dropFirst() {
+        guard let image = load(path, maxSide: 2000) else { continue }
+        var best: (score: Float, lines: [String]) = (0, [])
+        for orientation in [CGImagePropertyOrientation.up, .right, .down, .left] {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.automaticallyDetectsLanguage = true
+            do { try VNImageRequestHandler(cgImage: image, orientation: orientation).perform([request]) } catch {}
+            let reads = (request.results ?? []).compactMap { $0.topCandidates(1).first }.filter { $0.confidence >= 0.4 }
+            let score = reads.reduce(Float(0)) { $0 + $1.confidence * Float($1.string.count) }
+            if score > best.score { best = (score, reads.map(\.string)) }
+        }
+        print(best.lines.joined(separator: "\n"))
+    }
+    exit(0)
+}
+
 if args.first == "--eyes" {
     for path in args.dropFirst() {
         guard let image = load(path, maxSide: 3000) else { continue }

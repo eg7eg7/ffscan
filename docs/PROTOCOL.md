@@ -86,6 +86,7 @@ One key can repeat: `#ADFTYPEFEED#ADFDPLX1SCN` is two `ADF` entries.
 | `PARA` | Scan settings (reply `#parOK  ` or a list of rejected tokens) |
 | `TRDT` | Start the scan (the scanner starts feeding) |
 | `IMG ` | Pull image data (poll) |
+| *(in `PARA`)* `#BSZ` | Image block size. **Send it.** Without it the scanner uses 64 KB blocks; each block costs two round trips, which caps Wi-Fi throughput (~0.7 MB/s measured). Epson's engine sends `BufferSizeValue` from its model file, default `0x100000` (1 MiB). The scanner answers `#parOK` to any value. |
 | `CAN ` | Cancel a running scan |
 | `FIN ` | Leave ESC/I-2 mode |
 
@@ -116,13 +117,13 @@ CRP RANG -20..20 · LAM ON OFF (laminated photo mode)
 ```
 → STAT                                            ← (no #ERR: photos loaded)
 → PARA #ADFDPLXPEDTSKEWDFL1#COLC024#FMTJPG #JPGd090#GMMUG18
-       #RSMi0000300#RSSi0000300#ACQi0000000i0000000i0002550i0010800
+       #RSMi0000300#RSSi0000300#ACQi0000000i0000000i0002550i0010800#BSZi1048576
                                                   ← PARAx0000000#parOK
 → TRDT                                            ← TRDTx0000000
 → IMG   (repeat every ~0.2 s)
     ← IMG x0000000                                  nothing yet: the photo is still feeding
     ← IMG x0000265 #psti0002550d000i0010800 #typIMGA   page start, side A; JPEG data begins (FFD8)
-    ← IMG x0010000 #typIMGA                          more JPEG data (≤ 64 KB per block)
+    ← IMG x0100000 #typIMGA                          more JPEG data (blocks up to #BSZ; 64 KB without it)
     ← IMG x0000000 #peni0002550i0001263 #typIMGA     page end: real size 2550 × 1263
     ← … the same for #typIMGB (side B) …
     ← IMG x0000000 #peni…#lftd000#typIMGB            last page: 0 left in the feeder

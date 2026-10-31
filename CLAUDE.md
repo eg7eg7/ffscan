@@ -74,12 +74,20 @@ Order matters:
 - Pure-white pixels (≥ 250) are deskew corner fill, not photo.
 - Find rows first, then count columns only within them: back-side scans have a full-width band past the paper.
 
+## Prefer on-device methods over AI
+
+The user's rule: use classical/on-device methods wherever they work; Claude is optional and only for what they
+can't do (captions, tags, date estimates). Current split: duplicates = perceptual hash; rotation = face roll,
+then Vision scene classifier with `SCENE_MARGIN` (measured 12/14); back text = Vision OCR + `human_text()`
+filter (drops watermarks and lab codes); Claude rotates or reads backs only when those had no answer.
+
 ## Gotchas
 
 - **Scan speed is bound by Wi-Fi transfer, not processing.** Measured: ~8 s per side at 600 dpi / JPEG 95 (~5.8 MB,
   ~0.7 MB/s) even with all processing in the background. Each image block used to cost two round trips; `IMG` now
-  uses `read_ahead` and `#BSZ` (1 MiB). The scanner answers `#parOK` to *any* `#BSZ` value, so whether it is
-  honoured shows only in real block sizes. Uploads pause while a scan runs so they don't share the Wi-Fi.
+  uses `read_ahead` and `#BSZ` (1 MiB). Epson's own engine sends `#BSZ` = 1 MiB (`SDEModelInfo -bufferSize`
+  default when the model file has no `BufferSizeValue`), so ffscan does the same. The scanner answers `#parOK`
+  to any `#BSZ` value, so check the `MB/s` lines in the activity log after a real scan. Uploads pause while a scan runs so they don't share the Wi-Fi.
 
 - **Live updates are polled** (`/api/events?since=N`, once a second), on purpose. One SSE stream per tab used up
   Chrome's six connections per host, and every other request hung.

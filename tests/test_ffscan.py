@@ -131,6 +131,20 @@ with tempfile.TemporaryDirectory() as tmp:
     assert app.original_of(e, st) == kept
     assert app.next_number(album, "Summer 87") == 7  # numbering sees Originals/ and Enhanced/ too
 
+# dates written on the backs of prints
+assert app.date_from_text("Seaside, summer 1986") == "1986"
+assert app.date_from_text("14.7.1986 grandma") == "1986-07-14"       # day first (European)
+assert app.date_from_text("7/14/86") == "1986-07-14"                 # impossible as day-first -> US order
+assert app.date_from_text("08/1992") == "1992-08"
+assert app.date_from_text("no date here, 504 1111 N N") == ""
+
+# what counts as handwriting on a back: real OCR output from Kodak/Agfa paper backs must be dropped
+for noise in ["Kodak", "5041111 NN N-12", "Kod", "•Kodak", "MADE IN GERMANY", "QUALITY PAPER", "AGRA", "akl",
+              "JAL3145(AX(NO 25 )058", "073 01** N N N N-232 (038)", "L3145CAXCNO.4A 2009", "[Kodak", "dak"]:
+    assert app.human_text(noise) == "", noise
+for writing in ["Living room, 14.7.1986", "Seaside, summer 1986", "Mom 1986", "08/1992", "Dana and Yoni"]:
+    assert app.human_text(writing) == writing, writing
+
 from ffscan.photo_ai import to_metadata
 
 r = {"rotation": 0, "caption": "Kids at the beach.", "tags": ["beach"], "date_estimate": "1980s",

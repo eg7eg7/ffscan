@@ -153,7 +153,7 @@
       <summary><span class="sec-title" data-tip="What happens to each photo after it is scanned. Originals are never changed by enhancement.">Photo processing</span><span class="sum" data-sum="processing"></span></summary>
     <label class="row" data-tip="The scanner always scans the full 8.5″ width. This trims the grey background so each file is just the photo."><input type="checkbox" data-key="crop"> Crop to photo</label>
     <label class="row" data-tip="The scanner straightens photos that went in at a slight angle."><input type="checkbox" data-key="deskew"> Straighten (deskew)</label>
-    <label class="row" data-tip="Turns photos upright when they contain faces (Apple's face detection). Photos without people stay as scanned; use the ⟲ ⟳ buttons. Rotation is lossless."><input type="checkbox" data-key="auto_rotate"> Auto-rotate (photos with faces)</label>
+    <label class="row" data-tip="Turns photos upright on this Mac, without AI: by the angle of faces when there are people, otherwise by Apple's on-device scene recognition when it is clearly sure (right on 12 of 14 test photos; unsure ones stay as scanned, use ⟲ ⟳). Rotation is lossless."><input type="checkbox" data-key="auto_rotate"> Auto-rotate</label>
     <label class="row" data-tip="Saves a second copy (…_enhanced.jpg) with the fixes ticked below. The original scan is always kept unchanged. The Enhance button on each photo uses the same fixes."><input type="checkbox" data-key="enhance"> Also save an enhanced copy</label>
     <div class="sub">
       <label class="row" data-tip="Finds eyes with Apple's face detection and neutralises red flash reflections in the pupils. Only strongly red pixels inside the eyes are changed; skin is left alone."><input type="checkbox" data-key="enhance_opts.red_eye"> Remove red-eye</label>
@@ -168,7 +168,7 @@
         </select></label>
       <div class="folder enhance-folder"><input type="text" data-key="enhance_folder" placeholder="folder for enhanced copies"><button id="pickEnhance" type="button">Choose…</button></div>
     </div>
-    <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Faint paper-maker logos and lab codes count as blank; handwriting and stamps are kept."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
+    <label class="row" data-tip="When saving backs, throw away the ones with nothing written on them. Paper-maker logos and lab codes count as blank. Handwriting on any back is read on this Mac (no AI) and added to the picture's description, with a date taken from it if it has one."><input type="checkbox" data-key="skip_blank_backs"> Skip backs with no writing</label>
     <label data-tip="Recognises a print you already scanned, even at another resolution, crop or orientation, by comparing a visual fingerprint with every photo in the Save to folder. Mark keeps it and shows a Duplicate badge; Skip doesn't save it at all.">Duplicates
       <select data-key="duplicates"><option value="flag">Mark as duplicate</option><option value="skip">Skip (don't save)</option><option value="off">Don't check</option></select></label>
     </details>
