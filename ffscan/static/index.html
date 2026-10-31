@@ -174,6 +174,8 @@
     </details>
     <details class="section" data-section="metadata">
       <summary><span class="sec-title" data-tip="Filled in before scanning, these are written into every photo of the batch (EXIF/IPTC/XMP) so Photos, Google Photos, Lightroom etc. can show and search them. Edit single photos afterwards with Edit metadata….">Batch metadata</span><span class="sum" data-sum="metadata"></span></summary>
+    <label class="row" data-tip="When on, pressing Scan first opens a dialog to fill in this batch's album, details and file-name prefix.">
+      <input type="checkbox" data-key="ask_before_scan"> Ask before every scan</label>
     <label data-tip="Album name. Also used as the subfolder name inside Save to.">Album <input type="text" data-key="metadata.album" placeholder="e.g. Grandma 1985"></label>
     <label data-tip="When the photos were taken. A year alone (1985) or year-month (1985-07) is fine; missing parts become 01. Apps sort the photos by this date instead of the scan date.">Date taken <input type="text" data-key="metadata.date" placeholder="YYYY, YYYY-MM or YYYY-MM-DD"></label>
     <label data-tip="Where the photos were taken, e.g. Haifa, or Grandma's house.">Place <input type="text" data-key="metadata.place"></label>
@@ -258,6 +260,25 @@
   <p id="folderStatus" class="hint"></p>
   <div class="toolbar" style="margin-top:12px"><span class="spacer"></span>
     <button id="folderCancel" type="button">Cancel</button><button id="folderUse" type="button" class="primary">Upload here</button></div>
+</dialog>
+
+<dialog id="batchDialog">
+  <form method="dialog" id="batchForm">
+    <h3 style="margin-top:0">New batch</h3>
+    <div class="hint">Written into every photo of this batch. Pre-filled from the last batch: check or clear before scanning.</div>
+    <label>Album <input type="text" name="album" placeholder="e.g. Grandma 1985 (also the folder name)"></label>
+    <label>File names <input type="text" name="name_prefix" placeholder="scan time, e.g. 20261031-101500"></label>
+    <div class="hint" id="batchPreview"></div>
+    <label>Date taken <input type="text" name="date" placeholder="YYYY, YYYY-MM or YYYY-MM-DD"></label>
+    <label>Place <input type="text" name="place"></label>
+    <label>People <input type="text" name="people" placeholder="comma separated"></label>
+    <label>Tags <input type="text" name="tags" placeholder="comma separated"></label>
+    <label>Description <textarea name="description"></textarea></label>
+    <label class="row"><input type="checkbox" name="ask_before_scan" checked> Ask before every scan</label>
+    <div class="toolbar" style="margin-top:12px">
+      <button value="clear" type="button" id="batchClear">Clear</button><span class="spacer"></span>
+      <button value="cancel">Cancel</button><button value="start" class="primary">Start scan</button></div>
+  </form>
 </dialog>
 
 <dialog id="metaDialog">
@@ -530,8 +551,37 @@ $("#refresh").onclick = checkScanner;
 
 // ---------- scanning
 function setScanning(on) { $("#scan").disabled = on; $("#stop").disabled = !on; }
-$("#scan").onclick = async () => {
+async function startScan() {
   try { await post("/api/scan"); setScanning(true); } catch (e) { log(e.message, true); }
+}
+// batch details dialog before scanning (pre-filled from the last batch)
+const BATCH_FIELDS = ["album", "date", "place", "people", "tags", "description"];
+function batchPreview() {
+  const f = $("#batchForm").elements;
+  const prefix = f.name_prefix.value.trim().replace("{album}", f.album.value.trim() || "Photos")
+    .replace("{date}", new Date().toISOString().slice(0, 10)).replace(/[\\/:*?"<>|]+/g, "-");
+  $("#batchPreview").textContent = `First file: ${prefix || "20261031-101500"}_001.jpg in “${f.album.value.trim() || "today's date"}”`;
+}
+$("#batchForm").addEventListener("input", batchPreview);
+$("#batchClear").onclick = () => {
+  const f = $("#batchForm").elements;
+  [...BATCH_FIELDS, "name_prefix"].forEach(k => { f[k].value = ""; });
+  batchPreview(); f.album.focus();
+};
+$("#scan").onclick = () => {
+  if (!settings.ask_before_scan) return startScan();
+  const d = $("#batchDialog"), f = $("#batchForm").elements;
+  BATCH_FIELDS.forEach(k => { f[k].value = settings.metadata?.[k] || ""; });
+  f.name_prefix.value = settings.name_prefix || ""; f.ask_before_scan.checked = true;
+  batchPreview(); d.showModal(); f.album.focus();
+  d.onclose = async () => {
+    if (d.returnValue !== "start") return;
+    const metadata = Object.fromEntries(BATCH_FIELDS.map(k => [k, f[k].value.trim()]));
+    settings = await api("/api/settings", { method: "PUT", body: JSON.stringify(
+      { metadata, name_prefix: f.name_prefix.value.trim(), ask_before_scan: f.ask_before_scan.checked }) });
+    render();
+    startScan();
+  };
 };
 $("#stop").onclick = () => post("/api/cancel");
 

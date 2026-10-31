@@ -86,7 +86,8 @@ the small Apple Vision helper. Then it opens **http://localhost:8680** in your b
    has never been on Wi-Fi). ffscan finds it by itself; the status at the top turns to *Ready*.
 2. Load photos **face up** in the feeder.
 3. Choose where to save them under **Save to**, and optionally an album name under **Batch metadata**.
-4. Press **Scan**. Hover the ⓘ next to any setting for an explanation, or press **Help**.
+4. Press **Scan**, fill in the album, file names and details for this batch in the window that opens, and press
+   **Start scan**. Hover the ⓘ next to any setting for an explanation, or press **Help**.
 
 Tick **Keep scanning as I load more photos** to work through a whole box without touching the computer.
 

@@ -57,6 +57,7 @@ DEFAULTS = {
     "enhance_location": "split",
     "enhance_folder": "",
     "name_prefix": "",        # file name prefix; empty = scan time. Tokens: {album} {date}
+    "ask_before_scan": True,  # show the batch details dialog when Scan is pressed
     "watch": False,           # keep scanning new stacks until stopped
     "duplicates": "flag",     # flag | skip | off: same print already in the output folder (perceptual hash)
     "metadata": {"album": "", "title": "", "description": "", "date": "", "people": "", "place": "", "tags": ""},
