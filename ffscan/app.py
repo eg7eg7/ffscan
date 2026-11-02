@@ -206,7 +206,20 @@ def read_back(raw_back, s):
 
 
 def enhance(src, dst, s):
-    return enhancer.enhance(src, dst, **s["enhance_opts"])
+    """Enhanced copy with all of the original's metadata (dates, GPS from imported photos, rotation)."""
+    steps = enhancer.enhance(src, dst, **s["enhance_opts"])
+    run(["exiftool", "-q", "-overwrite_original", "-tagsFromFile", str(src), "-all:all", str(dst)])
+    return steps
+
+
+def gps_of(path):
+    """(latitude, longitude) in decimal degrees stored in the photo (e.g. imported from FastFoto), or None."""
+    out = run(["exiftool", "-s3", "-n", "-GPSLatitude", "-GPSLongitude", str(path)]).split()
+    try:
+        lat, lon = map(float, out)
+    except ValueError:  # no GPS (or only one of the two)
+        return None
+    return None if lat == lon == 0 else (lat, lon)
 
 
 METADATA_TAGS = {
@@ -517,7 +530,7 @@ def analyze_photo(path, files, raw_back, rotation_decided, s):
     if problem:
         raise RuntimeError(problem)
     result = photo_ai.analyze(path, back_with_writing(raw_back, s), provider=ai["provider"], project=ai["project"],
-                              region=ai["region"], model=ai["model"])
+                              region=ai["region"], model=ai["model"], gps=gps_of(path))
     existing = read_metadata(path)  # batch description and text read from the back on-device
     md = photo_ai.to_metadata(result, {**s["metadata"], "date": s["metadata"]["date"] or existing["date"]})
     # the caption always goes in: first line of the description (before the batch description and back text)
@@ -952,7 +965,6 @@ def enhance_one(body: dict):
         p = safe_path(str(original))
     out = enhanced_path(p, s, create=True)
     steps = enhance(p, out, s)
-    run(["exiftool", "-q", "-overwrite_original", "-tagsFromFile", str(p), "-all:all", str(out)])  # keep metadata + rotation
     emit("photo", file=str(out), index=-1, side="B", rotation=get_rotation(out))
     return {"file": str(out), "steps": steps}
 

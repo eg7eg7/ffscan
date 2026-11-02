@@ -174,11 +174,15 @@
   <li>FastFoto saves <code>Name_0001.jpg</code> (the scan), <code>Name_0001_a.jpg</code> (its enhanced copy) and
     <code>Name_0001_b.jpg</code> (the back). ffscan imports the scan and its back, and makes its own enhanced copy.</li>
   <li>The album name starts as the folder's name. FastFoto's files are copied, never changed or moved.</li>
+  <li>Everything already stored in FastFoto's files, such as the date or a GPS location, is kept, in the enhanced copy too.
+    With AI analysis on, a GPS location is used to name the place and mention it in the caption.</li>
 </ul>
 
 <h2 id="photos">Working with scanned photos</h2>
 <table>
   <tr><th>Action</th><th>What it does</th></tr>
+  <tr><td>All photos / Originals only / Enhanced only</td><td>Choose which photos the grid shows (next to the photo count). Select all, Select duplicates and the photo count only include what's shown.</td></tr>
+  <tr><td>☁ Auto-upload on/off</td><td>Turns automatic upload on or off right from the photo toolbar; the same setting as <em>Upload each photo automatically</em> under Cloud upload. Greyed out until a cloud account is connected.</td></tr>
   <tr><td>Click a thumbnail</td><td>Select or deselect it. <strong>Select all</strong> toggles every photo.</td></tr>
   <tr><td>⟲ ⟳</td><td>Rotate 90° left or right (lossless).</td></tr>
   <tr><td>Enhance</td><td>Save an enhanced copy next to the photo; the original stays.</td></tr>
@@ -236,7 +240,7 @@
     the photo's Headline. Analysing a photo again replaces the old caption.</li>
   <li>Each print is analysed <strong>once</strong>, on the original scan; the enhanced copy gets the same results.</li>
   <li><strong>Estimates when</strong> the photo was taken from clothes, cars, print style and colour. A year goes into the date field; a decade becomes a tag like <code>c. 1980s</code>.</li>
-  <li><strong>Guesses the place</strong> when it's recognisable.</li>
+  <li><strong>Names the place</strong>: from the photo's GPS location when it has one (e.g. imported from FastFoto), otherwise when it's recognisable.</li>
   <li><strong>Reads the back</strong> only when on-device reading found writing it couldn't read.</li>
 </ul>
 <p>It only fills <em>empty</em> fields. Anything you typed in the batch metadata is kept. To analyse photos scanned earlier, select them and press <strong>Analyse</strong>.</p>

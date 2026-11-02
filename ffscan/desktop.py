@@ -42,6 +42,15 @@ def show_running():
     webbrowser.open(URL)
 
 
+class PageApi:
+    """Called from the page as window.pywebview.api.*"""
+
+    def open_url(self, url):
+        """window.open() does nothing in the app window: open photos and cloud links in the default browser."""
+        if url.startswith(("http://", "https://")):  # never file:// or app schemes from page input
+            webbrowser.open(url)
+
+
 def main():
     if port_in_use():
         show_running()
@@ -63,7 +72,8 @@ def main():
     threading.Thread(target=server.run, daemon=True).start()
     while not server.started:
         time.sleep(0.05)
-    window = webview.create_window("FF-680W Scanner", URL, width=1400, height=900, min_size=(800, 600))
+    window = webview.create_window("FF-680W Scanner", URL, width=1400, height=900, min_size=(800, 600),
+                                   js_api=PageApi())
     window.events.closing += on_closing
     # Keep the page's own storage (minimised log, last tab) between launches.
     webview.start(private_mode=False, storage_path=str(ffscan.DATA_DIR / "webview"))

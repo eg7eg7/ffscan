@@ -78,6 +78,12 @@
   section.content { padding: 16px 20px; overflow-y: auto; }
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
   .toolbar .spacer { flex: 1; }
+  .autoup { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1.5px solid var(--accent);
+            border-radius: 999px; color: var(--accent); font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .autoup:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
+  .autoup:has(input:disabled) { border-color: var(--line); color: var(--muted); cursor: default; }
+  .autoup input { margin: 0; accent-color: var(--accent-ink); }
+  #show { width: auto; }
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; }
   .card.selected { outline: 2px solid var(--accent); background: var(--sel); }
@@ -243,7 +249,12 @@
 
   <section class="content">
     <div class="toolbar">
-      <strong id="count">Photos</strong><span class="spacer"></span>
+      <strong id="count">Photos</strong>
+      <select id="show" title="Which photos to show">
+        <option value="all">All photos</option><option value="original">Originals only</option><option value="enhanced">Enhanced only</option>
+      </select>
+      <span class="spacer"></span>
+      <label class="autoup" id="autoUpload"><input type="checkbox" data-key="upload.enabled"> <span>☁ Auto-upload</span></label>
       <button id="selAll">Select all</button>
       <button id="editMeta" disabled>Edit metadata…</button>
       <button id="analyzeSel" disabled title="Analyse the selected photos with Claude (rotation, caption, tags, date, place)">Analyse</button>
@@ -414,6 +425,12 @@ function render() {
     .replace("{album}", settings.metadata?.album?.trim() || "Photos")
     .replace("{date}", new Date().toISOString().slice(0, 10)).replace(/[\\/:*?"<>|]+/g, "-");
   $("#namePreview").textContent = `Example: ${prefix || "20261031-101500"}_001.jpg`;
+  const remote = settings.upload?.remote;
+  $("#autoUpload input").disabled = !remote;
+  $("#autoUpload span").textContent = `☁ Auto-upload ${remote && settings.upload.enabled ? "on" : "off"}`;
+  $("#autoUpload").title = remote
+    ? `Upload every new photo to ${settings.upload.remote} as soon as it's ready. Same as the setting under Cloud upload.`
+    : "Connect a cloud account under Cloud upload first";
   updateSummaries();
 }
 
@@ -777,11 +794,13 @@ function card(file, rotation) {
       } else if (a === "reveal") {
         await post("/api/reveal", { file });
       } else if (a === "cloudlink") {
+        const link = () => api(`/api/cloud_link?file=${encodeURIComponent(file)}`).then(r => r.url);
+        if (window.pywebview) return openExternal(await link());
         const w = window.open("", "_blank");  // opened now: a window opened after the await would be blocked
-        try { w.location = (await api(`/api/cloud_link?file=${encodeURIComponent(file)}`)).url; }
+        try { w.location = await link(); }
         catch (e) { w.close(); throw e; }
       } else if (a === "open") {
-        window.open(fileUrl(file), "_blank");
+        openExternal(fileUrl(file));
       } else if (a === "delete" && confirm(`Move ${name} to the Trash?`)) {
         await post("/api/delete", { file }); el.remove(); selected.delete(file); updateToolbar();
       }
@@ -789,11 +808,17 @@ function card(file, rotation) {
   };
   return el;
 }
+// The Mac app window (pywebview) drops window.open(): it hands the URL to the system browser instead.
+function openExternal(url) {
+  url = new URL(url, location.href).href;
+  window.pywebview ? window.pywebview.api.open_url(url) : window.open(url, "_blank");
+}
 function addPhoto(file, rotation, top = true, upload = null, dest = null, duplicateOf = null) {
   if (document.querySelector(`.card[data-file="${CSS.escape(file)}"]`)) return;
   $(".empty")?.remove();
   const g = $("#grid"), c = card(file, rotation);
   top ? g.prepend(c) : g.append(c);
+  showIfFiltered(c);
   setCloud(file, upload, dest);
   if (duplicateOf) {
     c.dataset.duplicateOf = duplicateOf;
@@ -839,14 +864,26 @@ async function loadPhotos() {
   updateToolbar();
 }
 function updateToolbar() {
-  const n = document.querySelectorAll(".card").length;
+  const n = document.querySelectorAll(".card:not([hidden])").length;
   $("#count").textContent = `${n} photo${n === 1 ? "" : "s"}` + (selected.size ? ` · ${selected.size} selected` : "");
   $("#editMeta").disabled = $("#uploadSel").disabled = $("#analyzeSel").disabled = $("#deleteSel").disabled = !selected.size;
-  const dupes = document.querySelectorAll(".card[data-duplicate-of]").length;
+  const dupes = document.querySelectorAll(".card[data-duplicate-of]:not([hidden])").length;
   $("#selDupes").textContent = `Select duplicates${dupes ? ` (${dupes})` : ""}`; $("#selDupes").disabled = !dupes;
 }
+// ---------- gallery filter: all photos, originals only or enhanced copies only (remembered per viewer)
+$("#show").value = store.get("show", "all");
+function showIfFiltered(c) {
+  const v = $("#show").value, enhanced = /_enhanced\.jpg$/i.test(c.dataset.file);
+  c.hidden = v !== "all" && (v === "enhanced") !== enhanced;
+  if (c.hidden && selected.delete(c.dataset.file)) c.classList.remove("selected");  // never act on hidden photos
+}
+$("#show").onchange = () => {
+  store.set("show", $("#show").value);
+  document.querySelectorAll(".card").forEach(showIfFiltered);
+  updateToolbar();
+};
 $("#selAll").onclick = () => {
-  const cards = document.querySelectorAll(".card"), all = selected.size !== cards.length;
+  const cards = document.querySelectorAll(".card:not([hidden])"), all = selected.size !== cards.length;
   cards.forEach(c => { c.classList.toggle("selected", all); all ? selected.add(c.dataset.file) : selected.delete(c.dataset.file); });
   updateToolbar();
 };
@@ -879,7 +916,7 @@ $("#analyzeSel").onclick = async () => {
   catch (e) { log(e.message, true); }
 };
 $("#selDupes").onclick = () => {
-  document.querySelectorAll(".card").forEach(c => {
+  document.querySelectorAll(".card:not([hidden])").forEach(c => {
     const dup = "duplicateOf" in c.dataset;
     c.classList.toggle("selected", dup); dup ? selected.add(c.dataset.file) : selected.delete(c.dataset.file);
   });

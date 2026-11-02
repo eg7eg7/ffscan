@@ -222,4 +222,17 @@ from ffscan import cloud
 cloud.remote_type = lambda name: {"db": "dropbox", "s3": "s3"}[name]
 assert cloud.web_url("db:FastFoto/Summer 87/x 1.jpg") == "https://www.dropbox.com/home/FastFoto/Summer%2087?preview=x%201.jpg"
 assert cloud.web_url("s3:bucket/x.jpg") is None
+# Imported photos may carry GPS: enhanced copies keep it, and gps_of reads it for the AI analysis
+import shutil
+if shutil.which("exiftool"):
+    with tempfile.TemporaryDirectory() as d:
+        src, dst = Path(d) / "x.jpg", Path(d) / "x_enhanced.jpg"
+        Image.new("RGB", (64, 48), (120, 90, 60)).save(src)
+        assert app.gps_of(src) is None
+        app.run(["exiftool", "-q", "-overwrite_original", "-GPSLatitude=49.7075", "-GPSLatitudeRef=N",
+                 "-GPSLongitude=0.2034", "-GPSLongitudeRef=W", str(src)])
+        assert app.gps_of(src) == (49.7075, -0.2034)
+        app.enhance(src, dst, {"enhance_opts": {"red_eye": False, "restore": True, "auto": True}})
+        assert app.gps_of(dst) == (49.7075, -0.2034)
+
 print("ok")

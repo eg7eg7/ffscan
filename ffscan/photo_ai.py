@@ -30,6 +30,8 @@ The picture is shown exactly as the scanner stored it, which may be sideways or 
   Use clues like film colour cast, print border style, clothing, cars, technology.
 - date_confidence: low, medium or high.
 - place: the place if recognisable (landmark, city, country) or clearly indicated, otherwise "".
+  When the photo's GPS position is given, use it: name the place there (landmark or area, city, country), and
+  mention it in the caption too.
 - back_text: handwriting, stamps or stickers on the back, transcribed as written (any language).
   Ignore paper-maker watermarks (Kodak, Fuji, DNP...) and machine-printed lab codes. "" if none or no back.
 - back_date: a date written on the back as YYYY, YYYY-MM or YYYY-MM-DD, otherwise "".
@@ -77,11 +79,13 @@ def _image_block(path, max_side=1568):
                                          "data": base64.standard_b64encode(buf.getvalue()).decode()}}
 
 
-def analyze(picture, back=None, *, provider="anthropic", project=None, region="global", model=MODEL):
-    """Return the parsed analysis dict for one print (picture path, optional back path)."""
+def analyze(picture, back=None, *, provider="anthropic", project=None, region="global", model=MODEL, gps=None):
+    """Return the parsed analysis dict for one print (picture path, optional back path, optional (lat, lon))."""
     content = [{"type": "text", "text": "Picture side:"}, _image_block(picture)]
     if back:
         content += [{"type": "text", "text": "Back of the same print:"}, _image_block(back)]
+    if gps:
+        content.append({"type": "text", "text": f"GPS position stored with the photo: {gps[0]:.6f}, {gps[1]:.6f}"})
     content.append({"type": "text", "text": "Catalogue this photo."})
     # Claude API: server-side fallback if the model declines; Vertex uses the client middleware instead
     fallback = {} if provider == "vertex" else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
